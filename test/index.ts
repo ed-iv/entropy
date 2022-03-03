@@ -1,19 +1,28 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
+import { Entropy } from "../typechain";
+import "hardhat-gas-reporter";
+import { Signer } from "ethers";
+import { Provider } from "@ethersproject/abstract-provider";
 
-describe("Greeter", function () {
-  it("Should return the new greeting once it's changed", async function () {
-    const Greeter = await ethers.getContractFactory("Greeter");
-    const greeter = await Greeter.deploy("Hello, world!");
-    await greeter.deployed();
 
-    expect(await greeter.greet()).to.equal("Hello, world!");
+describe("Entropy", function () {
 
-    const setGreetingTx = await greeter.setGreeting("Hola, mundo!");
+  let owner: Signer, minter: Signer, somebody: Signer, entropy: Entropy;
 
-    // wait until the transaction is mined
-    await setGreetingTx.wait();
+  before( async () => {
+    [owner, minter, somebody] = await ethers.getSigners();
+  });
 
-    expect(await greeter.greet()).to.equal("Hola, mundo!");
+  beforeEach(async () => {
+    const Entropy = await ethers.getContractFactory("Entropy");
+    entropy = await Entropy.deploy(ethers.constants.AddressZero);
+    await entropy.deployed();
+  });
+
+  it("Should allow admin to create auctions for an entire generation.", async function () {
+    await expect(entropy.ownerOf(0)).to.be.revertedWith("ERC721: owner query for nonexistent token");
+    
+
   });
 });

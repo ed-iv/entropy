@@ -32,11 +32,10 @@ struct Auction {
 struct Deck { uint8 generation; }
 
 contract Entropy is ERC721URIStorage, AccessControl, ReentrancyGuard {
-    uint256 public _auctionDuration;
-    uint256 public _auctionMinPrice;
-    uint256 public _auctionDiscountRate;
-    uint256 public _chainPurchaseWindow; // seconds
-    uint8 public _chainPurchaseDiscount = 5; // percent
+    uint256 public _auctionMinPrice = 10000000000000000; // 0.01 ETH in WEI
+    uint256 public _auctionDuration = 7200; // seconds
+    uint256 public _chainPurchaseWindow = 3600; // seconds
+    uint8 public _chainPurchaseDiscount = 25; // percent
     uint16 public _nextAuctionId;
     mapping(uint16 => Auction) public _auctions;
     
@@ -52,9 +51,8 @@ contract Entropy is ERC721URIStorage, AccessControl, ReentrancyGuard {
     event AuctionEnded(address who, uint256 tokenId);
     event CardMinted(uint256 tokenId, uint8 deck);
     event AuctionCreated(uint16 indexed auctionId, address indexed creator, uint8 indexed deck, uint8 generation);
-    event CardPurchased();
-    event AuctionSettled();
-    event SaleFinalized();
+    event CardPurchased(uint16 indexed auctionId, address indexed purchaser, uint8 indexed deck, uint8 generation);    
+    event SaleFinalized(uint16 indexed auctionId, address indexed purchaser, uint256 indexed tokenId, uint8 deck, uint8 generation);
     
     constructor(address minter) ERC721("Entropy", "ENTR") {      
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
@@ -106,11 +104,12 @@ contract Entropy is ERC721URIStorage, AccessControl, ReentrancyGuard {
         emit AuctionCreated(auctionId, msg.sender, deck, generation);
     }
 
+    // TODO - Finer grained control
     /// @notice - Allows auctioneer to create auctions for a specified generation. Decks that have either
     /// exceeded or not advanced to this generation are ignored. This allows auctions to be created in bulk
     /// (for example on some release schedule) while allowing individual decks to advance at their own rates
     /// through chained purchases.
-    function createAuctionForGeneration(uint8 generation, uint256 startPrice, uint256 startTime) external onlyRole(AUCTIONEER_ROLE) {
+    function createAuctionForGeneration(uint8 generation, uint256 startPrice, uint256 startTime) public onlyRole(AUCTIONEER_ROLE) {
         for (uint8 i = 0; i < MAX_DECKS; i++) {
             if (_decks[i].generation == generation) {
                 createAuction(i, startPrice, startTime, address(0));
@@ -139,7 +138,7 @@ contract Entropy is ERC721URIStorage, AccessControl, ReentrancyGuard {
             (bool sent, ) = payable(msg.sender).call{value: refund}("");
             if (!sent) revert EthTransferFailed();
         }     
-        emit CardPurchased();
+        emit CardPurchased(auctionId, msg.sender, auction.deck, auction.generation);
     }
 
     /// @notice - This function is intended to be called by automated auctioneer account in response to CardPurchased activity
@@ -157,12 +156,13 @@ contract Entropy is ERC721URIStorage, AccessControl, ReentrancyGuard {
         uint256 startTime = block.timestamp + _chainPurchaseWindow;
         createAuction(auction.deck, nextStartPrice, startTime, auction.purchaser);
         delete(_auctions[auctionId]);
-        emit SaleFinalized();                
+        emit SaleFinalized(auctionId, purchaser, tokenId, auction.deck, auction.generation);                
     }
 
     function _getPurchasePrice(uint256 startPrice, uint256 startTime) public view returns (uint256) {                
         uint256 timeElapsed = block.timestamp - startTime;
-        uint256 discount = _auctionDiscountRate * timeElapsed;
+        uint256 discountRate = startPrice / _auctionDuration;
+        uint256 discount = discountRate * timeElapsed;
         uint256 price = startPrice - discount;
         return price >= _auctionMinPrice ? price : _auctionMinPrice;
     }
@@ -172,16 +172,12 @@ contract Entropy is ERC721URIStorage, AccessControl, ReentrancyGuard {
         return startPrice - discount;
     }
 
-    function setAuctionDuration(uint256 auctionDuration) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        _auctionDuration = auctionDuration;
-    }
-
     function setAuctionMinPrice(uint256 auctionMinPrice) external onlyRole(DEFAULT_ADMIN_ROLE) {
         _auctionMinPrice = auctionMinPrice;
     }
 
-    function setAuctionDiscountRate(uint256 auctionDiscountRate) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        _auctionDiscountRate = auctionDiscountRate;
+    function setAuctionDuration(uint256 auctionDuration) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _auctionDuration = auctionDuration;
     }
 
     function setChainPurchaseWindow(uint256 chainPurchaseWindow) external onlyRole(DEFAULT_ADMIN_ROLE) {

@@ -20,8 +20,7 @@ error InsufficientFunds();
 error EthTransferFailed();
 
 struct Auction {    
-    uint256 startPrice;
-    uint256 minPrice;
+    uint256 startPrice;    
     uint8 deck;
     uint8 generation;    
     uint256 startTime;
@@ -31,8 +30,7 @@ struct Auction {
 
 struct Deck { uint8 generation; }
 
-contract Entropy is ERC721URIStorage, AccessControl, ReentrancyGuard {
-    uint256 public _auctionMinPrice = 10000000000000000; // 0.01 ETH in WEI
+contract Entropy is ERC721URIStorage, AccessControl, ReentrancyGuard {    
     uint256 public _auctionDuration = 7200; // seconds
     uint256 public _chainPurchaseWindow = 3600; // seconds
     uint8 public _chainPurchaseDiscount = 25; // percent
@@ -93,8 +91,7 @@ contract Entropy is ERC721URIStorage, AccessControl, ReentrancyGuard {
         _decks[deck].generation++;        
         uint16 auctionId = _nextAuctionId++;
         _auctions[auctionId] = Auction(
-            startPrice,
-            _auctionMinPrice,
+            startPrice,            
             deck,
             generation,
             startTime,            
@@ -164,16 +161,13 @@ contract Entropy is ERC721URIStorage, AccessControl, ReentrancyGuard {
         uint256 discountRate = startPrice / _auctionDuration;
         uint256 discount = discountRate * timeElapsed;
         uint256 price = startPrice - discount;
-        return price >= _auctionMinPrice ? price : _auctionMinPrice;
+        uint256 minPrice = (startPrice * 10) / 100;
+        return price >= minPrice ? price : minPrice;
     }
 
     function _getChainPurchasePrice(uint256 startPrice) private view returns (uint256) {
         uint256 discount = (startPrice * _chainPurchaseDiscount) / 100;
         return startPrice - discount;
-    }
-
-    function setAuctionMinPrice(uint256 auctionMinPrice) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        _auctionMinPrice = auctionMinPrice;
     }
 
     function setAuctionDuration(uint256 auctionDuration) external onlyRole(DEFAULT_ADMIN_ROLE) {

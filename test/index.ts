@@ -162,16 +162,4 @@ describe("Entropy Auctions", function () {
     await expect(await (await entropy._auctions(51)).prevPurchaser).to.eq(await buyer1.getAddress());
 
   });
-
-  it("Allows chain purchases.", async function () {        
-    const entropy =  await deploy(owner);
-    const startTime = getNow() + ONE_HOUR;
-    await entropy.createAuction(2, startPrice, startTime, ethers.constants.AddressZero);
-    // expect(await entropy.purchaseCard(0, {value: startPrice})).not.to.be.reverted;
-    const auction = await entropy._auctions(0);
-    expect(await entropy.getPurchasePrice(auction.startPrice, auction.startTime)).not.to.be.reverted;
-
-  });
-
-
 });

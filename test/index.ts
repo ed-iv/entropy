@@ -7,7 +7,7 @@ import { Provider } from "@ethersproject/abstract-provider";
 
 const getNow = () => Math.ceil(Date.now() / 1000);
 let owner: Signer, minter: Signer, buyer1: Signer, buyer2: Signer, entropy: Entropy;
-const startPrice = BigNumber.from(10).pow(18).div(2); // .5 ETH
+const startPrice = BigNumber.from(10).pow(18).mul(2); // 2 ETH
 const ONE_HOUR = 60 * 60;
 const ONE_DAY = 24 * 60 * 60;
 
@@ -15,8 +15,12 @@ describe("Entropy Auctions", function () {
 
   
   const deploy = async (user: Signer | Provider): Promise<Entropy> => {
+    const rarity = [];
+    for (let i = 0; i < 3000; i++) {
+      rarity[i] = 5;
+    }
     const Entropy = await ethers.getContractFactory("Entropy");
-    entropy = (await Entropy.deploy(ethers.constants.AddressZero)).connect(user);
+    entropy = await (await Entropy.deploy(ethers.constants.AddressZero, rarity)).connect(user);
     return entropy as Entropy;
   }
   
@@ -130,11 +134,21 @@ describe("Entropy Auctions", function () {
     ).to.be.revertedWith('AuctionNotStarted()');
 
     await expect((await entropy._auctions(50)).purchaser).to.eq(ethers.constants.AddressZero);
+    console.log(await entropy._auctions(50));
     await expect(
-      entropy.purchaseCard(50, {value: startPrice})
+      entropy.connect(buyer1).purchaseCard(50, {value: startPrice})
     ).not.to.be.reverted;
     await expect((await entropy._auctions(50)).startTime).to.eq(0);
     await expect(await (await entropy._auctions(51)).prevPurchaser).to.eq(await buyer1.getAddress());
-
   });
+
+  // it("Allows auctioneer to set rarity", async () => {
+  //   const rarity = [];
+  //   for (let i = 0; i < 3000; i++) {
+  //     rarity[i] = 5;
+  //   }
+  //   await expect(entropy.connect(owner).setRarity(rarity)).not.to.be.reverted;
+  //   expect(await entropy._rarity(2999)).to.be.eq(5);
+  // });
+
 });

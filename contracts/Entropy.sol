@@ -17,6 +17,7 @@ error InvalidDeck();
 error InvalidGeneration();
 error InsufficientFunds();
 error EthTransferFailed();
+error RarityNotSet();
 
 struct Auction {    
     uint startPrice;    
@@ -47,6 +48,7 @@ contract Entropy is ERC721URIStorage, AccessControl, ReentrancyGuard {
     string public _baseTokenURI = "ipfs://";            
     uint16 private _nextTokenId;
     mapping(uint8 => Deck) public _decks;
+    uint8[] public _rarity;
     
     event AuctionCreated(
         uint16 indexed auctionId, 
@@ -73,13 +75,27 @@ contract Entropy is ERC721URIStorage, AccessControl, ReentrancyGuard {
         _;
     }
 
-    constructor(address minter) ERC721("Entropy", "ENTR") {      
+    constructor(address minter, uint8[] memory rarity) ERC721("Entropy", "ENTR") {      
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _setupRole(AUCTIONEER_ROLE, minter);
         // Initialize decks to FIRST_GEN
         for (uint8 i; i <= MAX_DECKS; i++) {
             _decks[i].generation = FIRST_GEN;
-        }
+        }        
+        _rarity = rarity;        
+    }
+
+    function setRarity(uint8[] calldata rarity) external onlyAuctioneer {
+        _rarity = rarity;
+    }
+
+    function getRarity(uint8 deck, uint8 generation) internal view returns (uint8) {
+        if (_rarity.length != 3000) revert RarityNotSet();
+        if (deck == 0 || deck > MAX_DECKS) revert InvalidDeck();
+        if (generation == 0 || generation > MAX_GENERATIONS) revert InvalidDeck();
+        uint8 deckIndex = (deck * 50) - 1;
+        uint8 genIndex = generation - 1;
+        return _rarity[deckIndex + genIndex];
     }
 
     function supportsInterface(bytes4 interfaceId) public view virtual override(ERC721, AccessControl) returns (bool) {
@@ -127,11 +143,7 @@ contract Entropy is ERC721URIStorage, AccessControl, ReentrancyGuard {
         emit AuctionCreated(auctionId, msg.sender, deck, generation, startTime, prevPurchaser);
     }
 
-    // TODO - Finer grained control
-    /// @notice - Allows auctioneer to create auctions for a specified generation. Decks that have either
-    /// exceeded or not advanced to this generation are ignored. This allows auctions to be created in bulk
-    /// (for example on some release schedule) while allowing individual decks to advance at their own rates
-    /// through chained purchases.
+    /// @notice - Create auctions for all decks given a specific generation
     function createAuctionForGeneration(uint8 generation, uint startPrice, uint32 startTime) public onlyAuctioneer {
         if (generation > MAX_GENERATIONS || generation == 0) revert InvalidGeneration();
         for (uint8 i = 1; i <= MAX_DECKS; i++) {
@@ -141,8 +153,7 @@ contract Entropy is ERC721URIStorage, AccessControl, ReentrancyGuard {
         }
     }
 
-    /// @notice - Purchaser doesn't actually get NFT at this point (it isn't even minted). Rather, they are sort of 
-    /// buying a claim to the token that will be fulfilled when settleAuction is called.
+    /// @notice - Purchasing a card mints the token and initializes the next auction.
     function purchaseCard(uint16 auctionId) external payable nonReentrant {        
         Auction memory auction = _auctions[auctionId];
         bool isChainPurchase = false;        
@@ -153,8 +164,8 @@ contract Entropy is ERC721URIStorage, AccessControl, ReentrancyGuard {
             isChainPurchase = true;
         }
         uint price = isChainPurchase 
-            ? getChainPurchasePrice(auction.startPrice)
-            : getPurchasePrice(auction.startPrice, auction.startTime);
+            ? getChainPurchasePrice(auction)
+            : getPurchasePrice(auction);
         if (msg.value < price) revert InsufficientFunds();        
         auction.purchaser = msg.sender;    
         uint refund = msg.value - price;
@@ -172,21 +183,10 @@ contract Entropy is ERC721URIStorage, AccessControl, ReentrancyGuard {
         _doCreateAuction(auction.deck, 0.5 ether, startTime, auction.purchaser);        
     }
 
-    /// @notice - This function is intended to be called b yautomated auctioneer account in response to CardPurchased activity
-    /// being emitted. 
-    function settleAuction(uint16 auctionId, uint nextStartPrice) internal {
-        Auction memory auction = _auctions[auctionId];        
-        if (auction.startPrice == 0) revert AuctionDoesNotExist();
-        if (auction.purchaser == address(0)) revert AuctionStillInProgress();
-        // _setTokenURI(auction.tokenId, tokenURI);
-        uint32 startTime = uint32(block.timestamp) + _chainPurchaseWindow;
-        delete _auctions[auctionId];
-        _doCreateAuction(auction.deck, nextStartPrice, startTime, auction.purchaser);        
-        // emit SaleFinalized(auctionId, auction.purchaser, auction.tokenId, auction.deck, auction.generation);                
-    }
-
-    function getPurchasePrice(uint startPrice, uint32 startTime) public view returns (uint) {                
-        uint32 timeElapsed = uint32(block.timestamp) - startTime;
+    function getPurchasePrice(Auction memory auction) public view returns (uint) {   
+        uint rarity = getRarity(auction.deck, auction.generation);        
+        uint startPrice = ((rarity - 1) / 9) + 0.5 ether;             
+        uint32 timeElapsed = uint32(block.timestamp) - auction.startTime;
         uint discountRate = startPrice / _auctionDuration;
         uint discount = discountRate * timeElapsed;
         uint minPrice = startPrice / 10;
@@ -194,7 +194,9 @@ contract Entropy is ERC721URIStorage, AccessControl, ReentrancyGuard {
         return price;
     }
 
-    function getChainPurchasePrice(uint startPrice) private view returns (uint) {
+    function getChainPurchasePrice(Auction memory auction) private view returns (uint) {
+        uint rarity = getRarity(auction.deck, auction.generation);        
+        uint startPrice = ((rarity - 1) / 9) + 0.5 ether;         
         uint discount = (startPrice * _chainPurchaseDiscount) / 100;
         return startPrice - discount;
     }

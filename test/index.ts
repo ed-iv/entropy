@@ -67,13 +67,15 @@ describe("Entropy Auctions", function () {
   it("Allows user to make purchase on running auction", async function () {
     const entropy = await deploy(buyer1);
     const startTime = getNow() - ONE_HOUR;
-    const purchasePrice = await entropy.getPurchasePrice(startPrice, startTime);    
+    
     await expect(
       entropy.connect(owner).createAuctionForGeneration(1, startPrice, startTime)
     ).not.to.be.reverted;      
-        
+    await expect(entropy.ownerOf(0)).to.be.revertedWith("ERC721: owner query for nonexistent token");
+    await expect(await entropy.balanceOf(await buyer1.getAddress())).to.eq(0);
     await expect(entropy.purchaseCard(0)).to.be.revertedWith('InsufficientFunds()');
     await expect(entropy.purchaseCard(0, {value: startPrice})).not.to.be.reverted;
+    await expect(await entropy.balanceOf(await buyer1.getAddress())).to.eq(1);
 
     const block = await ethers.provider.getBlockNumber();
     const events = await entropy.queryFilter(
@@ -94,14 +96,11 @@ describe("Entropy Auctions", function () {
     expect(eventDetails.args.generation).to.eq(1);
   });
 
-  it("Allows auctioneer to settle purchase.", async function () {
-    await expect(await entropy.balanceOf(await buyer1.getAddress())).to.eq(0);
-    await expect(entropy.ownerOf(0)).to.be.revertedWith("ERC721: owner query for nonexistent token");
-
-    await entropy.connect(owner).settleAuction(0, startPrice, 'foo');
+  it("Allows auctioneer to settle purchase", async function () {        
+    // await entropy.connect(owner).settleAuction(0, startPrice, 'foo');
     expect(await entropy.balanceOf(await buyer1.getAddress())).to.eq(1);
     expect(await entropy.ownerOf(0)).to.be.eq(await buyer1.getAddress())
-    expect(await entropy.tokenURI(0)).to.be.eq('ipfs://foo');
+    // expect(await entropy.tokenURI(0)).to.be.eq('ipfs://foo');
 
     const block = await ethers.provider.getBlockNumber();
 
@@ -119,34 +118,13 @@ describe("Entropy Auctions", function () {
     let eventDetails = entropy.interface.parseLog(creationEvents[0]);
     expect(eventDetails.name).to.eq("AuctionCreated");
     expect(eventDetails.args.auctionId).to.eq(50);
-    expect(eventDetails.args.creator).to.eq(await owner.getAddress());
+    expect(eventDetails.args.creator).to.eq(await buyer1.getAddress());
     expect(eventDetails.args.deck).to.eq(1);
-    expect(eventDetails.args.generation).to.eq(2);
-
-    
-    const settledEvents = await entropy.queryFilter(
-      entropy.filters.SaleFinalized(
-        null,
-        null,
-        null,
-        null,   
-        null     
-      ),
-      block
-    );
-  
-    expect(settledEvents.length).eq(1);
-    eventDetails = entropy.interface.parseLog(settledEvents[0]);
-    expect(eventDetails.name).to.eq("SaleFinalized");
-    expect(eventDetails.args.auctionId).to.eq(0);
-    expect(eventDetails.args.purchaser).to.eq(await buyer1.getAddress());
-    expect(eventDetails.args.tokenId).to.eq(0);
-    expect(eventDetails.args.deck).to.eq(1);
-    expect(eventDetails.args.generation).to.eq(1);    
+    expect(eventDetails.args.generation).to.eq(2); 
   });
 
-  it("Allows chain purchases.", async function () {        
-    // Make sure random buyer can't execute a chain purchase.
+  it("Allows chain purchases", async function () {        
+    // Make sure random buyer can't execute a chain purchase.    
     await expect(
       entropy.connect(buyer2).purchaseCard(50, {value: startPrice})
     ).to.be.revertedWith('AuctionNotStarted()');
@@ -155,10 +133,7 @@ describe("Entropy Auctions", function () {
     await expect(
       entropy.purchaseCard(50, {value: startPrice})
     ).not.to.be.reverted;
-    await expect((await entropy._auctions(50)).purchaser).to.eq(await buyer1.getAddress());
-
-    await expect(await (await entropy._auctions(51)).prevPurchaser).to.eq(ethers.constants.AddressZero);
-    await entropy.connect(owner).settleAuction(50, startPrice, 'foo');
+    await expect((await entropy._auctions(50)).startTime).to.eq(0);
     await expect(await (await entropy._auctions(51)).prevPurchaser).to.eq(await buyer1.getAddress());
 
   });

@@ -9,11 +9,11 @@ import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 
 error Unauthorized();
-error AuctionNotStarted(uint16 auctionId);
+error AuctionNotStarted();
 error AuctionStillInProgress();
-error AuctionDoesNotExist(uint16 auctionId);
-error AuctionHasEnded(uint16 auctionId);
-error InvalidDeck(uint8 deck);
+error AuctionDoesNotExist();
+error AuctionHasEnded();
+error InvalidDeck();
 error InvalidGeneration();
 error InsufficientFunds();
 error EthTransferFailed();
@@ -111,8 +111,8 @@ contract Entropy is ERC721URIStorage, AccessControl, ReentrancyGuard {
         _doCreateAuction(deck, startPrice, startTime, prevPurchaser);
     }
 
-    function _doCreateAuction(uint8 deck, uint startPrice, uint32 startTime, address prevPurchaser) internal onlyAuctioneer {
-        if (deck > MAX_DECKS || deck == 0) revert InvalidDeck(deck);        
+    function _doCreateAuction(uint8 deck, uint startPrice, uint32 startTime, address prevPurchaser) internal {
+        if (deck > MAX_DECKS || deck == 0) revert InvalidDeck();        
         uint8 generation = _decks[deck].generation++;            
         uint16 auctionId = _nextAuctionId++;
         _auctions[auctionId] = Auction(
@@ -146,10 +146,10 @@ contract Entropy is ERC721URIStorage, AccessControl, ReentrancyGuard {
     function purchaseCard(uint16 auctionId) external payable nonReentrant {        
         Auction memory auction = _auctions[auctionId];
         bool isChainPurchase = false;        
-        if (auction.startPrice == 0) revert AuctionDoesNotExist(auctionId);
-        if (auction.purchaser != address(0)) revert AuctionHasEnded(auctionId);
+        if (auction.startPrice == 0) revert AuctionDoesNotExist();
+        if (auction.purchaser != address(0)) revert AuctionHasEnded();
         if (block.timestamp < auction.startTime) {
-            if (auction.prevPurchaser == address(0) || msg.sender != auction.prevPurchaser) revert AuctionNotStarted(auctionId);
+            if (auction.prevPurchaser == address(0) || msg.sender != auction.prevPurchaser) revert AuctionNotStarted();
             isChainPurchase = true;
         }
         uint price = isChainPurchase 
@@ -164,23 +164,25 @@ contract Entropy is ERC721URIStorage, AccessControl, ReentrancyGuard {
         }             
         auction.tokenId = _nextTokenId++;
         _auctions[auctionId] = auction;
-        _safeMint(msg.sender, auction.tokenId);
+        _safeMint(msg.sender, auction.tokenId);       
         emit CardPurchased(auctionId, auction.tokenId, msg.sender, auction.deck, auction.generation);
+        // Make user settle auction                         
+        uint32 startTime = uint32(block.timestamp) + _chainPurchaseWindow;
+        delete _auctions[auctionId];
+        _doCreateAuction(auction.deck, 0.5 ether, startTime, auction.purchaser);        
     }
 
     /// @notice - This function is intended to be called b yautomated auctioneer account in response to CardPurchased activity
     /// being emitted. 
-    function settleAuction(uint16 auctionId, uint nextStartPrice, string calldata tokenURI) external onlyAuctioneer {
+    function settleAuction(uint16 auctionId, uint nextStartPrice) internal {
         Auction memory auction = _auctions[auctionId];        
-        if (auction.startPrice == 0) revert AuctionDoesNotExist(auctionId);
+        if (auction.startPrice == 0) revert AuctionDoesNotExist();
         if (auction.purchaser == address(0)) revert AuctionStillInProgress();
-
-        _setTokenURI(auction.tokenId, tokenURI);
-
+        // _setTokenURI(auction.tokenId, tokenURI);
         uint32 startTime = uint32(block.timestamp) + _chainPurchaseWindow;
-        _doCreateAuction(auction.deck, nextStartPrice, startTime, auction.purchaser);
         delete _auctions[auctionId];
-        emit SaleFinalized(auctionId, auction.purchaser, auction.tokenId, auction.deck, auction.generation);                
+        _doCreateAuction(auction.deck, nextStartPrice, startTime, auction.purchaser);        
+        // emit SaleFinalized(auctionId, auction.purchaser, auction.tokenId, auction.deck, auction.generation);                
     }
 
     function getPurchasePrice(uint startPrice, uint32 startTime) public view returns (uint) {                

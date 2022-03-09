@@ -11,8 +11,8 @@ import "@openzeppelin/contracts/utils/Strings.sol";
 error Unauthorized();
 error AuctionNotStarted(uint16 auctionId);
 error AuctionStillInProgress();
-error AuctionDoesNotExist();
-error AuctionHasEnded();
+error AuctionDoesNotExist(uint16 auctionId);
+error AuctionHasEnded(uint16 auctionId);
 error InvalidDeck(uint8 deck);
 error InvalidGeneration();
 error InsufficientFunds();
@@ -24,6 +24,7 @@ struct Auction {
     uint8 generation;    
     uint32 startTime;
     address purchaser;
+    uint16 tokenId;
     address prevPurchaser;
 }
 
@@ -55,8 +56,13 @@ contract Entropy is ERC721URIStorage, AccessControl, ReentrancyGuard {
         uint32 startTime,
         address prevPurchaser
     );    
-    event CardMinted(uint tokenId, uint8 deck);    
-    event CardPurchased(uint16 indexed auctionId, address indexed purchaser, uint8 indexed deck, uint8 generation);    
+    event CardPurchased(
+        uint16 indexed auctionId, 
+        uint16 tokenId, 
+        address indexed purchaser, 
+        uint8 indexed deck, 
+        uint8 generation
+    );    
     event SaleFinalized(uint16 indexed auctionId, address indexed purchaser, uint indexed tokenId, uint8 deck, uint8 generation);
     
     modifier onlyAuctioneer() {
@@ -78,13 +84,6 @@ contract Entropy is ERC721URIStorage, AccessControl, ReentrancyGuard {
 
     function supportsInterface(bytes4 interfaceId) public view virtual override(ERC721, AccessControl) returns (bool) {
         return super.supportsInterface(interfaceId);
-    }
-
-    function mintFromDeck(uint8 deck, address to, string memory tokenURI) public onlyAuctioneer {
-        uint16 tokenId = _nextTokenId++;
-        _safeMint(to, tokenId);
-        _setTokenURI(tokenId, tokenURI);
-        _decks[deck].generation++;
     }
 
     function _baseURI() internal view virtual override returns (string memory) {
@@ -122,6 +121,7 @@ contract Entropy is ERC721URIStorage, AccessControl, ReentrancyGuard {
             generation,
             startTime,            
             address(0),
+            0,
             prevPurchaser
         );
         emit AuctionCreated(auctionId, msg.sender, deck, generation, startTime, prevPurchaser);
@@ -144,10 +144,10 @@ contract Entropy is ERC721URIStorage, AccessControl, ReentrancyGuard {
     /// @notice - Purchaser doesn't actually get NFT at this point (it isn't even minted). Rather, they are sort of 
     /// buying a claim to the token that will be fulfilled when settleAuction is called.
     function purchaseCard(uint16 auctionId) external payable nonReentrant {        
-        Auction storage auction = _auctions[auctionId];
+        Auction memory auction = _auctions[auctionId];
         bool isChainPurchase = false;        
-        if (auction.startPrice == 0) revert AuctionDoesNotExist();
-        if (auction.purchaser != address(0)) revert AuctionHasEnded();
+        if (auction.startPrice == 0) revert AuctionDoesNotExist(auctionId);
+        if (auction.purchaser != address(0)) revert AuctionHasEnded(auctionId);
         if (block.timestamp < auction.startTime) {
             if (auction.prevPurchaser == address(0) || msg.sender != auction.prevPurchaser) revert AuctionNotStarted(auctionId);
             isChainPurchase = true;
@@ -161,25 +161,26 @@ contract Entropy is ERC721URIStorage, AccessControl, ReentrancyGuard {
         if (refund > 0) {
             (bool sent, ) = payable(msg.sender).call{value: refund}("");
             if (!sent) revert EthTransferFailed();
-        }     
-        emit CardPurchased(auctionId, msg.sender, auction.deck, auction.generation);
+        }             
+        auction.tokenId = _nextTokenId++;
+        _auctions[auctionId] = auction;
+        _safeMint(msg.sender, auction.tokenId);
+        emit CardPurchased(auctionId, auction.tokenId, msg.sender, auction.deck, auction.generation);
     }
 
     /// @notice - This function is intended to be called b yautomated auctioneer account in response to CardPurchased activity
     /// being emitted. 
     function settleAuction(uint16 auctionId, uint nextStartPrice, string calldata tokenURI) external onlyAuctioneer {
         Auction memory auction = _auctions[auctionId];        
-        if (auction.startPrice == 0) revert AuctionDoesNotExist();
+        if (auction.startPrice == 0) revert AuctionDoesNotExist(auctionId);
         if (auction.purchaser == address(0)) revert AuctionStillInProgress();
-            
-        uint16 tokenId = _nextTokenId++;
-        _safeMint(auction.purchaser, tokenId);
-        _setTokenURI(tokenId, tokenURI);
+
+        _setTokenURI(auction.tokenId, tokenURI);
 
         uint32 startTime = uint32(block.timestamp) + _chainPurchaseWindow;
         _doCreateAuction(auction.deck, nextStartPrice, startTime, auction.purchaser);
         delete _auctions[auctionId];
-        emit SaleFinalized(auctionId, auction.purchaser, tokenId, auction.deck, auction.generation);                
+        emit SaleFinalized(auctionId, auction.purchaser, auction.tokenId, auction.deck, auction.generation);                
     }
 
     function getPurchasePrice(uint startPrice, uint32 startTime) public view returns (uint) {                

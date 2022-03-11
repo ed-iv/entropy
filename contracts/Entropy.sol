@@ -132,9 +132,7 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
     ) external onlyOwner {
         if (_listings[deckNum][genNum].startTime != 0)
             revert CardSaleHasEnded();
-        for (uint8 i = 1; i <= MAX_DECKS; i++) {
-            _listCard(i, genNum, startTime, address(0));
-        }
+        _listCard(deckNum, genNum, startTime, address(0));
     }
 
     /// @notice - List multiple cards by providing an array of deck numbers and generation numbers.
@@ -225,21 +223,24 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
         return startPrice - discount;
     }
 
-    /// @dev - Helper to fetch rarity. Maps one dimensional array into two dimensional
-    /// array keyed by deck number, generation number.
-    function getRarity(uint8 deckNum, uint8 genNum)
+    /**
+     * @dev Rarity is a 2D array indexed by deckNum, genNum translated into one dimension using
+     * a striding technique that lays each deck out one after another. For example, _rarity[0] would
+     * represent deck 1, generation 1, _rarity[1] = deck 1, gen 2 and so on.
+     */
+    function getRarity(uint16 deckNum, uint16 genNum)
         internal
         view
         returns (uint8)
     {
         if (deckNum == 0 || deckNum > MAX_DECKS) revert InvalidDeck();
-        if (genNum == 0 || genNum > MAX_GENERATIONS) revert InvalidDeck();
-        uint8 deckIndex = (deckNum * 50) - 1;
-        uint8 genIndex = genNum - 1;
-        return _rarity[deckIndex + genIndex];
+        if (genNum == 0 || genNum > MAX_GENERATIONS) revert InvalidGeneration();
+        uint16 index = ((deckNum - 1) * MAX_GENERATIONS) + (genNum - 1);
+        return _rarity[index];
     }
 
     /// @notice - Fetch tokenId for deck number, generation number pair (if exists).
+    /// @dev
     function getTokenId(uint8 deckNum, uint8 genNum)
         external
         view

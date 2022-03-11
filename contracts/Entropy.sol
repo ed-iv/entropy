@@ -28,8 +28,8 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
     uint8 public constant MAX_DECKS = 50;
     uint8 public constant MAX_GENERATIONS = 60;    
 
-    uint24 public _listingDuration = 7200; // seconds
-    uint16 public _chainPurchaseWindow = 3600; // seconds
+    uint24 public _listingDuration = 86400; // 24 Hours
+    uint16 public _chainPurchaseWindow = 3600; // 1 Hour
     uint8 public _chainPurchaseDiscount = 25; // percent
             
 
@@ -151,19 +151,19 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
     }
 
     /// @notice - Rarity dependent price for normal purchases.
-    function _price(uint8 deckNum, uint8 genNum, uint32 startTime) public view returns (uint) {   
+    function _price(uint8 deckNum, uint8 genNum, uint32 startTime) internal view returns (uint) {   
         uint rarity = getRarity(deckNum, genNum);        
-        uint startPrice = ((rarity - 1) / 9) + 0.5 ether;             
-        uint32 timeElapsed = uint32(block.timestamp) - startTime;
+        uint startPrice = (((rarity - 1) * (1 ether)) / 9) + 0.5 ether;
+        uint timeElapsed = block.timestamp - uint(startTime);
         uint discountRate = startPrice / _listingDuration;
-        uint discount = discountRate * timeElapsed;
+        uint discount = uint(discountRate) * timeElapsed;
         uint minPrice = startPrice / 10;
-        uint price = startPrice > discount ? startPrice - discount : minPrice;        
+        uint price = startPrice > discount ? startPrice - discount : minPrice;             
         return price;
     }
 
     /// @notice - Rarity dependent price for chain purchases.
-    function _chainPrice(uint8 deckNum, uint8 genNum) private view returns (uint) {
+    function _chainPrice(uint8 deckNum, uint8 genNum) internal view returns (uint) {
         uint rarity = getRarity(deckNum, genNum);        
         uint startPrice = ((rarity - 1) / 9) + 0.5 ether;         
         uint discount = (startPrice * _chainPurchaseDiscount) / 100;

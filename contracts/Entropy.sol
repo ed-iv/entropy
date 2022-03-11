@@ -51,8 +51,10 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
         address indexed purchaser            
     );    
 
-    constructor(uint8[] memory rarity) ERC721("Entropy", "ENRPY") {                     
-        _rarity = rarity;        
+    constructor() ERC721("Entropy", "ENRPY") {}
+
+    function setRarity(uint8[] calldata rarity) external onlyOwner {
+        _rarity = rarity;
     }
 
     function supportsInterface(bytes4 interfaceId) public view virtual override(ERC721) returns (bool) {

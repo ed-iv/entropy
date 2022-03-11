@@ -31,7 +31,8 @@ describe("Internal Helpers", function () {
     });        
     rarity = cards.map(c => c.rarity);    
     const ExposedInternals = await ethers.getContractFactory("ExposedInternals");    
-    entropy = await ExposedInternals.deploy(rarity);    
+    entropy = await ExposedInternals.deploy();    
+    await entropy.setRarity(rarity);
   });
 
   it("Allows rarity to be set and indexed by deck, generation", async () => {    

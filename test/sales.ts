@@ -34,7 +34,8 @@ describe("Entropy Card Listing & Sales", function () {
 
     [owner, buyer1, buyer2] = await ethers.getSigners();    
     const Entropy = await ethers.getContractFactory("Entropy");    
-    entropy = await Entropy.deploy(rarity);
+    entropy = await Entropy.deploy();
+    await entropy.setRarity(rarity);
     return entropy as Entropy;
   });
 

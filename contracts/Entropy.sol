@@ -41,6 +41,7 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
     event CardListed(                
         uint8 indexed deck, 
         uint8 indexed generation, 
+        address indexed prevPurchaser,
         uint32 startTime        
     );    
 
@@ -82,7 +83,7 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
             listing.startTime = startTime;
             listing.prevPurchaser = prevPurchaser;
             _listings[deckNum][genNum] = listing;
-            emit CardListed(deckNum, genNum, startTime);    
+            emit CardListed(deckNum, genNum, prevPurchaser, startTime);    
         }        
     }
 

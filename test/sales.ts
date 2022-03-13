@@ -36,7 +36,8 @@ describe("Entropy Card Listing & Sales", function () {
 
     [owner, buyer1, buyer2] = await ethers.getSigners();
     const Entropy = await ethers.getContractFactory("Entropy");
-    entropy = await Entropy.deploy(rarity);
+    entropy = await Entropy.deploy();
+    await entropy.setRarity(rarity);
     return entropy as Entropy;
   });
 
@@ -50,6 +51,9 @@ describe("Entropy Card Listing & Sales", function () {
 
     const cardSale2 = await entropy._listings(1, 2);
     expect(cardSale2.startTime).to.be.eq(0);
+
+    const cardSale3 = await entropy._listings(50, 1);
+    expect(cardSale3.startTime).to.be.eq(startTime);
   });
 
   it("Allows user to purchase card that is on sale.", async () => {
@@ -101,7 +105,9 @@ describe("Entropy Card Listing & Sales", function () {
     const startTime = getNow() - ONE_HOUR;
     let cardSale = await entropy._listings(3, 5);
     expect(cardSale.startTime).to.be.eq(0);
-    await expect(entropy.listCard(3, 5, startTime)).not.to.be.reverted;
+    await expect(entropy.listCard(3, 5, startTime))
+      .to.emit(entropy, "CardListed")
+      .withArgs(3, 5, ethers.constants.AddressZero, startTime);
     cardSale = await entropy._listings(3, 5);
     expect(cardSale.startTime).to.be.eq(startTime);
   });
@@ -121,12 +127,12 @@ describe("Entropy Card Listing & Sales", function () {
     expect(await entropy.tokenURI(3)).to.be.eq("ipfs://foo/3.json");
   });
 
-  it("Get the current purchase price", async () => {
-    const startTime = getNow();
-    await ethers.provider.send("evm_setNextBlockTimestamp", [startTime]);
-    await ethers.provider.send("evm_mine", []);
-    await expect(await entropy._price(1, 1, startTime)).to.be.eq(
-      ethers.utils.parseEther("1.5")
-    );
-  });
+  // it("Get the current purchase price", async () => {
+  //   const startTime = getNow();
+  //   await ethers.provider.send("evm_setNextBlockTimestamp", [startTime]);
+  //   await ethers.provider.send("evm_mine", []);
+  //   await expect(await entropy._price(1, 1, startTime)).to.be.eq(
+  //     ethers.utils.parseEther("1.5")
+  //   );
+  // });
 });

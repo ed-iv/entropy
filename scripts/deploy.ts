@@ -17,9 +17,9 @@ async function main() {
   const rarity: number[] = cards.map(c => c.rarity);    
 
   const Entropy = await ethers.getContractFactory("Entropy");
-  const entropy = await Entropy.deploy(rarity);
-
+  const entropy = await Entropy.deploy();
   await entropy.deployed();
+  await entropy.setRarity(rarity);
   console.log("Entropy Contract Deployed:", entropy.address);
 }
 

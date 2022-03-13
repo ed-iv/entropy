@@ -2,7 +2,7 @@ import { expect } from "chai";
 import { ethers } from "hardhat";
 import { Entropy } from "../typechain";
 import "hardhat-gas-reporter";
-import { BigNumber, Contract, Signer } from "ethers";
+import { BigNumber, Contract, Signer, utils } from "ethers";
 import fs from "fs";
 
 interface Card {
@@ -126,13 +126,4 @@ describe("Entropy Card Listing & Sales", function () {
     expect(await entropy.ownerOf(3)).to.be.eq(await buyer2.getAddress());
     expect(await entropy.tokenURI(3)).to.be.eq("ipfs://foo/3.json");
   });
-
-  // it("Get the current purchase price", async () => {
-  //   const startTime = getNow();
-  //   await ethers.provider.send("evm_setNextBlockTimestamp", [startTime]);
-  //   await ethers.provider.send("evm_mine", []);
-  //   await expect(await entropy._price(1, 1, startTime)).to.be.eq(
-  //     ethers.utils.parseEther("1.5")
-  //   );
-  // });
 });

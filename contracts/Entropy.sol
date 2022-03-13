@@ -146,7 +146,7 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
         uint32 startTime
     ) external onlyOwner {
         for (uint8 i = 0; i < deckNums.length; i++) {
-            for (uint8 j = 0; i < genNums.length; i++) {
+            for (uint8 j = 0; j < genNums.length; j++) {
                 _listCard(deckNums[i], genNums[j], startTime, address(0));
             }
         }

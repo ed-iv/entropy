@@ -15,6 +15,7 @@ error InsufficientFunds();
 error InvalidDeck();
 error InvalidGeneration();
 error Unauthorized();
+error NoEtherBalance();
 
 struct CardListing {
     uint16 tokenId;
@@ -194,6 +195,12 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
         _listCard(deckNum, genNum + 1, startTime, msg.sender);
 
         emit CardPurchased(deckNum, genNum, tokenId, msg.sender);
+    }
+
+    function withdraw(address receipt) public onlyOwner {
+        if (address(this).balance == 0) revert NoEtherBalance();
+        (bool sent, ) = payable(receipt).call{value: address(this).balance}("");
+        if (!sent) revert EthTransferFailed();
     }
 
     /// @notice - Rarity dependent price for normal purchases.

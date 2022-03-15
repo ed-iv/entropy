@@ -13,7 +13,8 @@ interface Card {
   rarity: number;
 }
 
-let buyer1: Signer;
+let buyer1: Signer, owner: Signer;
+let changeBalance: BigNumber;
 
 const getNow = () => Math.ceil(Date.now() / 1000);
 
@@ -25,7 +26,7 @@ describe("Internal Helpers", function () {
 
   before(async () => {
     const rawData = fs.readFileSync("test/data/rarity.json");
-    [buyer1] = await ethers.getSigners();
+    [buyer1, owner] = await ethers.getSigners();
     cards = JSON.parse(rawData.toString());
     cards.forEach((c) => {
       if (rarityKey[c.deck] === undefined) {
@@ -125,8 +126,14 @@ describe("Internal Helpers", function () {
     await ethers.provider.send("evm_mine", []);
 
     const price = await entropy.getPrice(1, 1, startTime);
+    changeBalance = price;
     await expect(
       await entropy.connect(buyer1).purchaseCard(1, 1, { value: initialPrice })
     ).to.changeEtherBalance(entropy, price);
+  });
+  it("Withdraw token to the specific address", async () => {
+    const ownerBalance = await owner.getBalance();
+    await expect(entropy.withdraw(await owner.getAddress())).not.to.be.reverted;
+    expect(await owner.getBalance()).to.equal(ownerBalance.add(changeBalance));
   });
 });

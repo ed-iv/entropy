@@ -29,6 +29,8 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
     uint8 public constant MAX_DECKS = 50;
     uint8 public constant MAX_GENERATIONS = 60;
 
+    uint256 public _basePrice = 0.01 ether;
+    uint256 public _basePriceConstant = 0.005 ether;
     uint24 public _listingDuration = 86400; // 24 Hours
     uint16 public _chainPurchaseWindow = 3600; // 1 Hour
     uint8 public _chainPurchaseDiscount = 25; // percent
@@ -49,7 +51,9 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
         uint8 indexed deck,
         uint8 generation,
         uint16 indexed tokenId,
-        address indexed purchaser
+        address indexed purchaser,
+        uint32 nextStartTime,
+        uint256 nextChainPrice        
     );
 
     constructor() ERC721("Entropy", "ENRPY") {}
@@ -192,9 +196,11 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
         _safeMint(msg.sender, tokenId);
 
         uint32 startTime = uint32(block.timestamp) + _chainPurchaseWindow;
-        _listCard(deckNum, genNum + 1, startTime, msg.sender);
+        uint8 nextGenNum = genNum + 1;
+        _listCard(deckNum, nextGenNum, startTime, msg.sender);
 
-        emit CardPurchased(deckNum, genNum, tokenId, msg.sender);
+        uint256 nextChainPrice =  _chainPrice(deckNum, nextGenNum);
+        emit CardPurchased(deckNum, genNum, tokenId, msg.sender, startTime, nextChainPrice);
     }
 
     function withdraw(address receipt) public onlyOwner {
@@ -210,12 +216,12 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
         uint32 startTime
     ) internal view returns (uint256) {
         uint256 rarity = getRarity(deckNum, genNum);
-        uint256 startPrice = (((rarity - 1) * (1 ether)) / 9) + 0.5 ether;
+        uint256 startPrice = (((rarity - 1) * (_basePrice)) / 9) + _basePriceConstant;
         uint256 timeElapsed = block.timestamp - uint256(startTime);
-        uint256 discountRate = startPrice / _listingDuration;
-        uint256 discount = uint256(discountRate) * timeElapsed;
         uint256 minPrice = startPrice / 10;
-        uint256 price = startPrice > discount
+        uint256 discountRate = (startPrice - minPrice) / _listingDuration;
+        uint256 discount = uint256(discountRate) * timeElapsed;        
+        uint256 price = startPrice - minPrice > discount 
             ? startPrice - discount
             : minPrice;
         return price;
@@ -228,7 +234,7 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
         returns (uint256)
     {
         uint256 rarity = getRarity(deckNum, genNum);
-        uint256 startPrice = ((rarity - 1) / 9) + 0.5 ether;
+        uint256 startPrice = ((rarity - 1) / 9) + _basePriceConstant;
         uint256 discount = (startPrice * _chainPurchaseDiscount) / 100;
         return startPrice - discount;
     }

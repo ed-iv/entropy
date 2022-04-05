@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { ethers, network } from "hardhat";
 import { Entropy } from "../typechain";
 import "hardhat-gas-reporter";
 import { BigNumber, Contract, Signer, utils } from "ethers";
@@ -66,9 +66,7 @@ describe("Entropy Card Listing & Sales", function () {
     ).to.be.revertedWith("CardNotListed");
     await expect(
       entropy.connect(buyer1).purchaseCard(1, 1, { value: startPrice })
-    )
-      .to.emit(entropy, "CardPurchased")
-      .withArgs(1, 1, 1, await buyer1.getAddress());
+    ).not.to.be.reverted;
     await expect(await entropy.balanceOf(await buyer1.getAddress())).to.eq(1);
     expect(await entropy.ownerOf(1)).to.be.eq(await buyer1.getAddress());
     expect(await entropy.tokenURI(1)).to.be.eq("ipfs://foo/1.json");
@@ -81,15 +79,37 @@ describe("Entropy Card Listing & Sales", function () {
   });
 
   it("Allows prev purchaser to make chain purchase", async () => {
+  
     await expect(await entropy.balanceOf(await buyer1.getAddress())).to.eq(1);
     await expect(entropy.ownerOf(2)).to.be.revertedWith(
       "ERC721: owner query for nonexistent token"
     );
-    await expect(
-      entropy.connect(buyer1).purchaseCard(1, 2, { value: startPrice })
-    )
-      .to.emit(entropy, "CardPurchased")
-      .withArgs(1, 2, 2, await buyer1.getAddress());
+
+    const testTimeStamp = getNow() + 3600;        
+    await network.provider.send("evm_setNextBlockTimestamp", [testTimeStamp]);                
+    await entropy.connect(buyer1).purchaseCard(1, 2, { value: startPrice });
+    
+    const block = await ethers.provider.getBlockNumber();        
+    const events = await entropy.queryFilter(
+      entropy.filters.CardPurchased(
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,                              
+      ),
+      block
+    );
+    expect(events.length).eq(1);
+    const logDescription = entropy.interface.parseLog(events[0]);
+    expect(logDescription.args.deck).to.eq(1);
+    expect(logDescription.args.generation).to.eq(2);
+    expect(logDescription.args.purchaser).to.eq(await buyer1.getAddress());
+    expect(logDescription.args.tokenId).to.eq(2);
+    expect(logDescription.args.nextStartTime).to.eq(testTimeStamp + 3600);
+    expect(logDescription.args.nextChainPrice).to.eq(ethers.utils.parseEther('0.00375'));
+    
     await expect(await entropy.balanceOf(await buyer1.getAddress())).to.eq(2);
     expect(await entropy.ownerOf(2)).to.be.eq(await buyer1.getAddress());
     expect(await entropy.tokenURI(2)).to.be.eq("ipfs://foo/2.json");
@@ -120,8 +140,7 @@ describe("Entropy Card Listing & Sales", function () {
     await expect(
       entropy.connect(buyer2).purchaseCard(3, 5, { value: startPrice })
     )
-      .to.emit(entropy, "CardPurchased")
-      .withArgs(3, 5, 3, await buyer2.getAddress());
+      .to.emit(entropy, "CardPurchased");
     await expect(await entropy.balanceOf(await buyer2.getAddress())).to.eq(1);
     expect(await entropy.ownerOf(3)).to.be.eq(await buyer2.getAddress());
     expect(await entropy.tokenURI(3)).to.be.eq("ipfs://foo/3.json");

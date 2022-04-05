@@ -5,7 +5,12 @@ import "hardhat-gas-reporter";
 import fs from "fs";
 import { BigNumber, Signer } from "ethers";
 import { start } from "repl";
-// import { Signer } from "crypto";
+
+// const BASE_PRICE = ethers.utils.parseEther("1");
+// const BASE_CONSTANT = ethers.utils.parseEther("0.5");
+
+const BASE_PRICE = ethers.utils.parseEther("0.01");
+const BASE_CONSTANT = ethers.utils.parseEther("0.005");
 
 interface Card {
   deck: number;
@@ -69,13 +74,13 @@ describe("Internal Helpers", function () {
     const cardRarity = rarityKey[1][1];
     await expect(entropy.listCard(1, 1, startTime)).not.to.be.reverted;
 
-    const ONE_ETHER = BigNumber.from(10).pow(18);
     const DURATION = BigNumber.from(86400); // 24 hours
     const startPrice = BigNumber.from(cardRarity - 1)
-      .mul(ONE_ETHER)
+      .mul(BASE_PRICE)
       .div(BigNumber.from(9))
-      .add(ethers.utils.parseEther("0.5"));
-    const discountRate = startPrice.div(DURATION);
+      .add(BASE_CONSTANT);
+    const minPrice = startPrice.div(BigNumber.from(10));
+    const discountRate = startPrice.sub(minPrice).div(DURATION);
 
     // Test price in 2 hours
     let discount = discountRate.mul(BigNumber.from(7200));

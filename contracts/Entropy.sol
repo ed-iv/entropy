@@ -31,6 +31,8 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
 
     uint256 public _basePrice = 0.01 ether;
     uint256 public _basePriceConstant = 0.005 ether;
+    // uint256 public _basePrice = 1 ether;
+    // uint256 public _basePriceConstant = 0.5 ether;
     uint24 public _listingDuration = 86400; // 24 Hours
     uint16 public _chainPurchaseWindow = 3600; // 1 Hour
     uint8 public _chainPurchaseDiscount = 25; // percent
@@ -234,7 +236,7 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
         returns (uint256)
     {
         uint256 rarity = getRarity(deckNum, genNum);
-        uint256 startPrice = ((rarity - 1) / 9) + _basePriceConstant;
+        uint256 startPrice = (((rarity - 1) * (_basePrice)) / 9) + _basePriceConstant;
         uint256 discount = (startPrice * _chainPurchaseDiscount) / 100;
         return startPrice - discount;
     }

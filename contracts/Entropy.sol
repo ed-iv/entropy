@@ -54,8 +54,8 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
         uint8 generation,
         uint16 indexed tokenId,
         address indexed purchaser,
-        uint32 nextStartTime,
-        uint256 nextChainPrice        
+        uint256 purchasePrice,
+        uint32 nextStartTime        
     );
 
     constructor() ERC721("Entropy", "ENRPY") {}
@@ -197,12 +197,10 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
         _listings[deckNum][genNum].tokenId = tokenId;
         _safeMint(msg.sender, tokenId);
 
-        uint32 startTime = uint32(block.timestamp) + _chainPurchaseWindow;
-        uint8 nextGenNum = genNum + 1;
-        _listCard(deckNum, nextGenNum, startTime, msg.sender);
-
-        uint256 nextChainPrice =  _chainPrice(deckNum, nextGenNum);
-        emit CardPurchased(deckNum, genNum, tokenId, msg.sender, startTime, nextChainPrice);
+        uint32 startTime = uint32(block.timestamp) + _chainPurchaseWindow;        
+        _listCard(deckNum, genNum + 1, startTime, msg.sender);
+        
+        emit CardPurchased(deckNum, genNum, tokenId, msg.sender, price, startTime);
     }
 
     function withdraw(address receipt) public onlyOwner {

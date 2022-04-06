@@ -107,8 +107,8 @@ describe("Entropy Card Listing & Sales", function () {
     expect(logDescription.args.generation).to.eq(2);
     expect(logDescription.args.purchaser).to.eq(await buyer1.getAddress());
     expect(logDescription.args.tokenId).to.eq(2);
+    expect(logDescription.args.purchasePrice).to.eq(BigNumber.from('9583333333333333'));
     expect(logDescription.args.nextStartTime).to.eq(testTimeStamp + 3600);
-    expect(logDescription.args.nextChainPrice).to.eq(BigNumber.from('7916666666666667'));
     
     await expect(await entropy.balanceOf(await buyer1.getAddress())).to.eq(2);
     expect(await entropy.ownerOf(2)).to.be.eq(await buyer1.getAddress());

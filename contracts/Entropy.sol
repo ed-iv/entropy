@@ -23,16 +23,21 @@ struct CardListing {
     address prevPurchaser;
 }
 
+struct ListingId {
+    uint8 deck;
+    uint8 generation;
+}
+
 contract Entropy is ERC721, Ownable, ReentrancyGuard {
     using Strings for uint256;
 
     uint8 public constant MAX_DECKS = 50;
     uint8 public constant MAX_GENERATIONS = 60;
 
-    uint256 public _basePrice = 0.01 ether;
-    uint256 public _basePriceConstant = 0.005 ether;
-    // uint256 public _basePrice = 1 ether;
-    // uint256 public _basePriceConstant = 0.5 ether;
+    uint256 public _priceCoeff = 0.01 ether;
+    uint256 public _priceConstant = 0.005 ether;
+    // uint256 public _priceCoeff = 1 ether;
+    // uint256 public _priceConstant = 0.5 ether;
     uint24 public _listingDuration = 86400; // 24 Hours
     uint16 public _chainPurchaseWindow = 3600; // 1 Hour
     uint8 public _chainPurchaseDiscount = 25; // percent
@@ -40,6 +45,7 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
     string public _baseTokenURI = "ipfs://foo";
     uint16 private _nextTokenId = 1;
     mapping(uint8 => mapping(uint8 => CardListing)) public _listings;
+    mapping(uint16 => ListingId) public _listingIds;
     uint8[] public _rarity;
 
     event CardListed(
@@ -91,13 +97,19 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
         require(
             _exists(tokenId),
             "ERC721Metadata: URI query for nonexistent token"
-        );
+        );            
+        ListingId memory listingId = _listingIds[uint16(tokenId)];
+        if (listingId.deck > MAX_DECKS || listingId.deck == 0) revert InvalidDeck();
+        if (listingId.generation > MAX_GENERATIONS || listingId.generation == 0) revert InvalidGeneration();
         return
             string(
                 abi.encodePacked(
                     _baseTokenURI,
                     "/",
-                    tokenId.toString(),
+                    "D_",
+                    listingId.deck,
+                    "G_",
+                    listingId.generation,
                     ".json"
                 )
             );
@@ -121,8 +133,11 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
         }
     }
 
-    /// @notice - Create auctions for all decks given a specific generation. Attempts to
-    //  list a card that has already been sold will be ignored.
+    
+    /**
+     * @notice - Create auctions for all decks given a specific generation. Attempts to
+     * list a card that has already been sold will be ignored.
+     */
     function listGeneration(uint8 generation, uint32 startTime)
         external
         onlyOwner
@@ -134,7 +149,9 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
         }
     }
 
-    /// @notice - List a specific card for sale by deck number and generation number
+    /**
+     * @notice - List a specific card for sale by deck number and generation number
+     */
     function listCard(
         uint8 deckNum,
         uint8 genNum,
@@ -145,8 +162,11 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
         _listCard(deckNum, genNum, startTime, address(0));
     }
 
-    /// @notice - List multiple cards by providing an array of deck numbers and generation numbers.
-    //  Attempts to list cards that have already been sold will be ignored.
+    
+    /**
+     * @notice - List multiple cards by providing an array of deck numbers and generation numbers.
+     * Attempts to list cards that have already been sold will be ignored. 
+     */
     function listManyCards(
         uint8[] calldata deckNums,
         uint8[] calldata genNums,
@@ -159,10 +179,13 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
         }
     }
 
-    /// @notice - Purchase a card that has an active listing. The purchaser of the previous card in the
-    /// deck (if any) will be able to purchase before startTime. Purchasing a card
-    /// flags the current listing as ended by setting tokenId, mints the token to the purchaser, and lists
-    /// the next card in the deck.
+    
+    /**
+     * @notice - Purchase a card that has an active listing. The purchaser of the previous card in the
+     * deck (if any) will be able to purchase before startTime. Purchasing a card
+     * flags the current listing as ended by setting tokenId, mints the token to the purchaser, and lists
+     * the next card in the deck.
+     */
     function purchaseCard(uint8 deckNum, uint8 genNum)
         external
         payable
@@ -194,7 +217,9 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
         }
 
         uint16 tokenId = _nextTokenId++;
+        ListingId memory listingId = ListingId(deckNum, genNum);
         _listings[deckNum][genNum].tokenId = tokenId;
+        _listingIds[tokenId] = listingId;
         _safeMint(msg.sender, tokenId);
 
         uint32 startTime = uint32(block.timestamp) + _chainPurchaseWindow;        
@@ -216,7 +241,7 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
         uint32 startTime
     ) internal view returns (uint256) {
         uint256 rarity = getRarity(deckNum, genNum);
-        uint256 startPrice = (((rarity - 1) * (_basePrice)) / 9) + _basePriceConstant;
+        uint256 startPrice = (((rarity - 1) * (_priceCoeff)) / 9) + _priceConstant;
         uint256 timeElapsed = block.timestamp - uint256(startTime);
         uint256 minPrice = startPrice / 10;
         uint256 discountRate = (startPrice - minPrice) / _listingDuration;
@@ -234,7 +259,7 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
         returns (uint256)
     {
         uint256 rarity = getRarity(deckNum, genNum);
-        uint256 startPrice = (((rarity - 1) * (_basePrice)) / 9) + _basePriceConstant;
+        uint256 startPrice = (((rarity - 1) * (_priceCoeff)) / 9) + _priceConstant;
         uint256 discount = (startPrice * _chainPurchaseDiscount) / 100;
         return startPrice - discount;
     }
@@ -255,8 +280,9 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
         return _rarity[index];
     }
 
-    /// @notice - Fetch tokenId for deck number, generation number pair (if exists).
-    /// @dev
+    /**
+     * @dev - Fetch tokenId for given deck & generation.
+     */
     function getTokenId(uint8 deckNum, uint8 genNum)
         external
         view
@@ -272,6 +298,17 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
             "ERC721Metadata: URI query for nonexistent token"
         );
         return listing.tokenId;
+    }
+
+    /**
+     * @dev - Look up ListingId (deck and generation) given a tokenId 
+     */
+    function getListingId(uint16 tokenId)
+        external
+        view
+        returns (ListingId memory listingId)
+    {
+        return _listingIds[tokenId];
     }
 
     function setListingDuration(uint24 listingDuration) external onlyOwner {

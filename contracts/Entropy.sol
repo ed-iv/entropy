@@ -10,12 +10,19 @@ import "hardhat/console.sol";
 
 error CardNotListed();
 error CardSaleHasEnded();
+error ListingAlreadyExists();
+error ListingDoesNotExist();
 error EthTransferFailed();
 error InsufficientFunds();
 error InvalidDeck();
 error InvalidGeneration();
+error InvalidCard(uint8 deckNum, uint8 genNum);
 error Unauthorized();
 error NoEtherBalance();
+error InvalidStartTime();
+
+// uint256 public _priceCoeff = 1 ether;
+// uint256 public _priceConstant = 0.5 ether;
 
 struct CardListing {
     uint16 tokenId;
@@ -29,15 +36,14 @@ struct ListingId {
 }
 
 contract Entropy is ERC721, Ownable, ReentrancyGuard {
-    using Strings for uint256;
+    using Strings for uint256;    
+    using Strings for uint8;    
 
     uint8 public constant MAX_DECKS = 50;
     uint8 public constant MAX_GENERATIONS = 60;
 
     uint256 public _priceCoeff = 0.01 ether;
-    uint256 public _priceConstant = 0.005 ether;
-    // uint256 public _priceCoeff = 1 ether;
-    // uint256 public _priceConstant = 0.5 ether;
+    uint256 public _priceConstant = 0.005 ether;    
     uint24 public _listingDuration = 86400; // 24 Hours
     uint16 public _chainPurchaseWindow = 3600; // 1 Hour
     uint8 public _chainPurchaseDiscount = 25; // percent
@@ -64,20 +70,20 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
         uint32 nextStartTime        
     );
 
-    constructor() ERC721("Entropy", "ENRPY") {}
+    event ListingCanceled(uint8 deck, uint8 generation);
 
+    constructor() ERC721("Entropy Test", "ENTRPY") {}
+
+    /**
+     * @dev - Each card has a rarity rating ranging from 1 - 10. Card pricing is
+     * depedent on this rarity info, so in order to calculate the starting price 
+     * for new listings, we need access to this data. Calculating the starting price
+     * from rarity on the fly was cheaper than storing all start prices explicitly. As 
+     * a result, this function allows us to provide the contract with rarity info required
+     * for calculating start price.
+     */
     function setRarity(uint8[] calldata rarity) external onlyOwner {
         _rarity = rarity;
-    }
-
-    function supportsInterface(bytes4 interfaceId)
-        public
-        view
-        virtual
-        override(ERC721)
-        returns (bool)
-    {
-        return super.supportsInterface(interfaceId);
     }
 
     function _baseURI() internal view virtual override returns (string memory) {
@@ -94,38 +100,44 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
         override
         returns (string memory)
     {
+        ListingId storage listingId = _listingIds[uint16(tokenId)];
         require(
-            _exists(tokenId),
+            _exists(tokenId) && _isValidCard(listingId.deck, listingId.generation),
             "ERC721Metadata: URI query for nonexistent token"
-        );            
-        ListingId memory listingId = _listingIds[uint16(tokenId)];
-        if (listingId.deck > MAX_DECKS || listingId.deck == 0) revert InvalidDeck();
-        if (listingId.generation > MAX_GENERATIONS || listingId.generation == 0) revert InvalidGeneration();
-        return
+        );                         
+        return (
             string(
                 abi.encodePacked(
                     _baseTokenURI,
                     "/",
-                    "D_",
-                    listingId.deck,
-                    "G_",
-                    listingId.generation,
+                    "D",
+                    listingId.deck.toString(),
+                    "-",
+                    "G",
+                    listingId.generation.toString(),
                     ".json"
                 )
-            );
+            )
+        );
     }
 
+    /**
+     * @dev - This method returns quietly when an attempt is made to create a listing
+     * that already exists. This is to allow flexibility for other methods utilizing this
+     * logic. For example, when listing an entire generation, this allows us to silently 
+     * skip over generations that may already have been listed for a given deck.
+     */
     function _listCard(
         uint8 deckNum,
         uint8 genNum,
         uint32 startTime,
         address prevPurchaser
-    ) internal {
-        if (deckNum > MAX_DECKS || deckNum == 0) revert InvalidDeck();
-        if (genNum > MAX_GENERATIONS || genNum == 0) revert InvalidGeneration();
+    ) internal {        
+        if (!_isValidCard(deckNum, genNum)) revert InvalidCard(deckNum, genNum);
+        if (startTime == 0) revert InvalidStartTime();
         CardListing memory listing = _listings[deckNum][genNum];
-        if (listing.tokenId == 0) {
-            // Card has not been sold yet
+        if (listing.startTime == 0) {
+            // Card has not been listed yet:
             listing.startTime = startTime;
             listing.prevPurchaser = prevPurchaser;
             _listings[deckNum][genNum] = listing;
@@ -133,9 +145,8 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
         }
     }
 
-    
     /**
-     * @notice - Create auctions for all decks given a specific generation. Attempts to
+     * @dev - Create auctions for all decks given a specific generation. Attempts to
      * list a card that has already been sold will be ignored.
      */
     function listGeneration(uint8 generation, uint32 startTime)
@@ -150,7 +161,7 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
     }
 
     /**
-     * @notice - List a specific card for sale by deck number and generation number
+     * @dev - List a specific card for sale by deck number and generation number.
      */
     function listCard(
         uint8 deckNum,
@@ -158,11 +169,10 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
         uint32 startTime
     ) external onlyOwner {
         if (_listings[deckNum][genNum].startTime != 0)
-            revert CardSaleHasEnded();
+            revert ListingAlreadyExists();
         _listCard(deckNum, genNum, startTime, address(0));
     }
 
-    
     /**
      * @notice - List multiple cards by providing an array of deck numbers and generation numbers.
      * Attempts to list cards that have already been sold will be ignored. 
@@ -179,29 +189,37 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
         }
     }
 
-    
+    /**
+     * @dev - A listing can be canceled at any point prior to sale. Listings that are candidates
+     * for cancelation will have a non-zero startTime and a tokenId of 0.
+     */
+    function cancelListing(uint8 deckNum, uint8 genNum) external onlyOwner {
+        CardListing memory listing = _listings[deckNum][genNum];
+        if (listing.startTime == 0) revert ListingDoesNotExist();
+        if (listing.tokenId != 0) revert CardSaleHasEnded();
+        delete _listings[deckNum][genNum];
+        emit ListingCanceled(deckNum, genNum);
+    }
+
     /**
      * @notice - Purchase a card that has an active listing. The purchaser of the previous card in the
      * deck (if any) will be able to purchase before startTime. Purchasing a card
      * flags the current listing as ended by setting tokenId, mints the token to the purchaser, and lists
-     * the next card in the deck.
+     * the next card in the deck.     
      */
     function purchaseCard(uint8 deckNum, uint8 genNum)
         external
         payable
         nonReentrant
     {
-        if (deckNum > MAX_DECKS || deckNum == 0) revert InvalidDeck();
-        if (genNum > MAX_GENERATIONS || genNum == 0) revert InvalidGeneration();
+        if (!_isValidCard(deckNum, genNum)) revert InvalidCard(deckNum, genNum);
         CardListing memory listing = _listings[deckNum][genNum];
         bool isChainPurchase = false;
         if (listing.startTime == 0) revert CardNotListed();
         if (listing.tokenId != 0) revert CardSaleHasEnded();
         if (block.timestamp < listing.startTime) {
-            if (
-                listing.prevPurchaser == address(0) ||
-                msg.sender != listing.prevPurchaser
-            ) revert Unauthorized();
+            if (listing.prevPurchaser == address(0) || msg.sender != listing.prevPurchaser) 
+                revert Unauthorized();
             isChainPurchase = true;
         }
         uint256 price = isChainPurchase
@@ -222,8 +240,13 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
         _listingIds[tokenId] = listingId;
         _safeMint(msg.sender, tokenId);
 
-        uint32 startTime = uint32(block.timestamp) + _chainPurchaseWindow;        
-        _listCard(deckNum, genNum + 1, startTime, msg.sender);
+        uint8 nextGen = genNum + 1;
+        uint32 startTime;
+        if (_isValidGeneration(nextGen)) {
+            // Only create next listing while nextGen is a valid generation, i.e. <= 60
+            startTime = uint32(block.timestamp) + _chainPurchaseWindow;        
+            _listCard(deckNum, nextGen, startTime, msg.sender);
+        }
         
         emit CardPurchased(deckNum, genNum, tokenId, msg.sender, price, startTime);
     }
@@ -234,7 +257,9 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
         if (!sent) revert EthTransferFailed();
     }
 
-    /// @notice - Rarity dependent price for normal purchases.
+    /**  
+     * @notice - Rarity dependent price for normal purchases.
+     */ 
     function _price(
         uint8 deckNum,
         uint8 genNum,
@@ -252,7 +277,9 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
         return price;
     }
 
-    /// @notice - Rarity dependent price for chain purchases.
+    /** 
+     * @notice - Rarity dependent price for chain purchases.
+     */
     function _chainPrice(uint8 deckNum, uint8 genNum)
         internal
         view
@@ -327,5 +354,17 @@ contract Entropy is ERC721, Ownable, ReentrancyGuard {
         onlyOwner
     {
         _chainPurchaseDiscount = chainPurchaseDiscount;
+    }
+
+    function _isValidDeck(uint8 deckNum) internal pure returns (bool) {
+        return deckNum > 0 && deckNum <= MAX_DECKS;
+    }
+
+    function _isValidGeneration(uint8 genNum) internal pure returns (bool) {
+        return  genNum > 0 && genNum <= MAX_GENERATIONS;
+    }
+
+    function _isValidCard (uint8 deckNum, uint8 genNum) internal pure returns (bool) {
+        return _isValidDeck(deckNum) && _isValidGeneration(genNum);        
     }
 }

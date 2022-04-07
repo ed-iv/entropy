@@ -16,6 +16,7 @@ let owner: Signer,
   minter: Signer,
   buyer1: Signer,
   buyer2: Signer,
+  buyer3: Signer,
   entropy: Entropy;
 const startPrice = BigNumber.from(10).pow(18).mul(2); // 2 ETH
 const ONE_HOUR = 60 * 60;
@@ -34,7 +35,7 @@ describe("Entropy Card Listing & Sales", function () {
     });
     const rarity = cards.map((c: any) => c.rarity);
 
-    [owner, buyer1, buyer2] = await ethers.getSigners();
+    [owner, buyer1, buyer2, buyer3] = await ethers.getSigners();
     const Entropy = await ethers.getContractFactory("Entropy");
     entropy = await Entropy.deploy();
     await entropy.setRarity(rarity);
@@ -69,7 +70,7 @@ describe("Entropy Card Listing & Sales", function () {
     ).not.to.be.reverted;
     await expect(await entropy.balanceOf(await buyer1.getAddress())).to.eq(1);
     expect(await entropy.ownerOf(1)).to.be.eq(await buyer1.getAddress());
-    expect(await entropy.tokenURI(1)).to.be.eq("ipfs://foo/1.json");
+    expect(await entropy.tokenURI(1)).to.be.eq("ipfs://foo/D1-G1.json");
   });
 
   it("Reverts when random user attempts chain purchase", async () => {
@@ -112,7 +113,7 @@ describe("Entropy Card Listing & Sales", function () {
     
     await expect(await entropy.balanceOf(await buyer1.getAddress())).to.eq(2);
     expect(await entropy.ownerOf(2)).to.be.eq(await buyer1.getAddress());
-    expect(await entropy.tokenURI(2)).to.be.eq("ipfs://foo/2.json");
+    expect(await entropy.tokenURI(2)).to.be.eq("ipfs://foo/D1-G2.json");
   });
 
   it("Reverts when user tries to purchase card that has sold", async () => {
@@ -143,6 +144,38 @@ describe("Entropy Card Listing & Sales", function () {
       .to.emit(entropy, "CardPurchased");
     await expect(await entropy.balanceOf(await buyer2.getAddress())).to.eq(1);
     expect(await entropy.ownerOf(3)).to.be.eq(await buyer2.getAddress());
-    expect(await entropy.tokenURI(3)).to.be.eq("ipfs://foo/3.json");
+    expect(await entropy.tokenURI(3)).to.be.eq("ipfs://foo/D3-G5.json");
+  });
+
+  it("Allows purchase of all valid cards in a given deck", async () => {
+    const startTime = getNow() - ONE_HOUR;    
+    expect(await entropy.balanceOf(await buyer3.getAddress())).to.eq(0);
+    await expect(entropy.listGeneration(50, startTime)).not.to.be.reverted;
+    for (let i = 1; i <= 61; i++) {
+      if (i === 61) {
+        await expect(entropy.connect(buyer3).purchaseCard(50, i, { value: startPrice }))
+          .to.be.revertedWith("InvalidCard(50, 61)");
+      } else {
+        // Generations 1 - 60;
+        await expect(entropy.connect(buyer3).purchaseCard(50, i, { value: startPrice }))
+          .not.to.be.reverted;
+      }      
+    }
+    await expect(await entropy.balanceOf(await buyer3.getAddress())).to.eq(60);
+  });
+
+  it("Allows owner to cancel listing prior to sale", async () => {
+    const startTime = getNow() - ONE_HOUR;    
+    await entropy.listCard(10, 2, startTime);
+    let cardSale = await entropy._listings(10, 2);    
+    expect(cardSale.startTime).to.be.eq(startTime);
+    await expect(entropy.cancelListing(10, 2))
+      .to.emit(entropy, "ListingCanceled")
+      .withArgs(10, 2);
+    cardSale = await entropy._listings(10, 2);
+    expect(cardSale.startTime).to.be.eq(0);
+    await expect(
+      entropy.connect(buyer1).purchaseCard(10, 2, { value: startPrice })
+    ).to.be.revertedWith("CardNotListed");
   });
 });

@@ -21,8 +21,8 @@ error Unauthorized();
 error NoEtherBalance();
 error InvalidStartTime();
 
-// uint256 public _priceCoeff = 1 ether;
-// uint256 public _priceConstant = 0.5 ether;
+// uint256 public _priceCoeff = 0.01 ether;
+// uint256 public _priceConstant = 0.005 ether;    
 
 struct CardListing {
     uint16 tokenId;
@@ -42,8 +42,8 @@ contract Entropy is ERC721, AccessControl, ReentrancyGuard {
     uint8 public constant MAX_DECKS = 50;
     uint8 public constant MAX_GENERATIONS = 60;
 
-    uint256 public _priceCoeff = 0.01 ether;
-    uint256 public _priceConstant = 0.005 ether;    
+    uint256 public _priceCoeff = 1 ether;
+    uint256 public _priceConstant = 0.5 ether;
     uint24 public _listingDuration = 86400; // 24 Hours
     uint16 public _chainPurchaseWindow = 3600; // 1 Hour
     uint8 public _chainPurchaseDiscount = 25; // percent

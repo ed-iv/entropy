@@ -6,11 +6,11 @@ import fs from "fs";
 import { BigNumber, Signer } from "ethers";
 import { start } from "repl";
 
-// const BASE_PRICE = ethers.utils.parseEther("1");
-// const BASE_CONSTANT = ethers.utils.parseEther("0.5");
+const BASE_PRICE = ethers.utils.parseEther("1");
+const BASE_CONSTANT = ethers.utils.parseEther("0.5");
 
-const BASE_PRICE = ethers.utils.parseEther("0.01");
-const BASE_CONSTANT = ethers.utils.parseEther("0.005");
+// const BASE_PRICE = ethers.utils.parseEther("0.01");
+// const BASE_CONSTANT = ethers.utils.parseEther("0.005");
 
 interface Card {
   deck: number;

@@ -199,8 +199,8 @@ contract Entropy is ERC721, AccessControl, ReentrancyGuard {
         }
         
         uint256 price = isChainPurchase
-            ? _chainPrice(deck, generation)
-            : _price(deck, generation, listing.startTime);
+            ? getChainPrice(deck, generation)
+            : getPrice(deck, generation, listing.startTime);
         if (msg.value < price) revert InsufficientFunds();
         uint256 refund = msg.value - price;
         if (refund > 0) {
@@ -313,11 +313,11 @@ contract Entropy is ERC721, AccessControl, ReentrancyGuard {
     /**  
      * @notice - Rarity dependent price for normal purchases.
      */ 
-    function _price(
+    function getPrice(
         uint8 deck,
         uint8 generation,
         uint32 startTime
-    ) internal view returns (uint256) {
+    ) public view returns (uint256) {
         uint256 rarity = getRarity(deck, generation);
         uint256 startPrice = (((rarity - 1) * (_priceCoeff)) / 9) + _priceConstant;
         uint256 timeElapsed = block.timestamp - uint256(startTime);
@@ -333,8 +333,8 @@ contract Entropy is ERC721, AccessControl, ReentrancyGuard {
     /** 
      * @notice - Rarity dependent price for chain purchases.
      */
-    function _chainPrice(uint8 deck, uint8 generation)
-        internal
+    function getChainPrice(uint8 deck, uint8 generation)
+        public
         view
         returns (uint256)
     {

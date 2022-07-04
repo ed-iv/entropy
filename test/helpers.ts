@@ -75,10 +75,15 @@ describe("Internal Helpers", function () {
     await expect(entropy.listCard(1, 1, startTime)).not.to.be.reverted;
 
     const DURATION = BigNumber.from(86400); // 24 hours
+    
+    const BASE_PRICE = ethers.utils.parseEther("1");
+    const BASE_CONSTANT = ethers.utils.parseEther("0.5");
+
     const startPrice = BigNumber.from(cardRarity - 1)
       .mul(BASE_PRICE)
       .div(BigNumber.from(9))
       .add(BASE_CONSTANT);
+      
     const minPrice = startPrice.div(BigNumber.from(10));
     const discountRate = startPrice.sub(minPrice).div(DURATION);
 

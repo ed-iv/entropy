@@ -67,34 +67,22 @@ contract Entropy is ERC721, AccessControl, ReentrancyGuard {
 
     event ListingCanceled(uint8 deck, uint8 generation);
 
-    constructor() ERC721("Entropy Test", "ENTRPY") {
-        _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
+    constructor() ERC721("Entropy Cards", "ENTROPY") {
+        _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
     }
 
     modifier onlyOwner() {
-        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender))
+        if (!hasRole(DEFAULT_ADMIN_ROLE, _msgSender()))
             revert Unauthorized();
         _;
     }
     
     modifier onlyLister() {
-        if (!hasRole(LISTER, msg.sender) && !hasRole(DEFAULT_ADMIN_ROLE, msg.sender))
+        if (!hasRole(LISTER, _msgSender()) && !hasRole(DEFAULT_ADMIN_ROLE, _msgSender()))
             revert Unauthorized();
         _;
     }
-
-    /**
-     * @dev - Each card has a rarity rating ranging from 1 - 10. Card pricing is
-     * depedent on this rarity info, so in order to calculate the starting price 
-     * for new listings, we need access to this data. Calculating the starting price
-     * from rarity on the fly was cheaper than storing all start prices explicitly. This 
-     * function allows us to provide the contract with rarity info required
-     * for calculating start price.
-     */
-    function setRarity(uint8[] calldata rarity) external onlyOwner {
-        _rarity = rarity;
-    }
-
+    
     function _baseURI() internal view virtual override returns (string memory) {
         return _baseTokenURI;
     }
@@ -125,20 +113,33 @@ contract Entropy is ERC721, AccessControl, ReentrancyGuard {
         );
     }
 
-      /**
-     * @dev - List a specific card for sale by deck number and generation number.
+    function burn(uint256 tokenId) external {
+        require(_isApprovedOrOwner(_msgSender(), tokenId), "ERC721: transfer caller is not owner nor approved");
+        _burn(tokenId);
+    }
+
+    /**
+     * @dev - Each card has a rarity rating ranging from 1 - 10. Card pricing is
+     * depedent on this rarity info, so in order to calculate the starting price 
+     * for new listings, we need access to this data. Calculating the starting price
+     * from rarity on the fly was cheaper than storing all start prices explicitly. This 
+     * function allows us to provide the contract with rarity info required
+     * for calculating start price.
      */
-    function listCard(
-        uint8 deck,
-        uint8 generation,
-        uint32 startTime
-    ) external onlyLister {
+    function setRarity(uint8[] calldata rarity) external onlyOwner {
+        _rarity = rarity;
+    }
+
+    /**
+     * @notice - List a specific card for sale by deck and generation.
+     */
+    function listCard(uint8 deck, uint8 generation, uint32 startTime) external onlyLister {
         if (_listings[deck][generation].startTime != 0) revert ListingAlreadyExists();
         _listCard(deck, generation, startTime, address(0));
     }
 
     /**
-     * @dev - Create auctions for all decks given a specific generation. Attempts to
+     * @notice - Create auctions for all decks given a specific generation. Attempts to
      * list a card that has already been sold will be ignored.
      */
     function listGeneration(uint8 generation, uint32 startTime) external onlyLister {
@@ -165,8 +166,9 @@ contract Entropy is ERC721, AccessControl, ReentrancyGuard {
     }
 
     /**
-     * @dev - A listing can be canceled at any point prior to sale. Listings that are candidates
-     * for cancelation will have a non-zero startTime and a tokenId of 0.
+     * @notice - A listing can be canceled at any point prior to sale. 
+     * @dev - Listings that are candidates for cancelation will have a non-zero 
+     * startTime and a tokenId of 0.
      */
     function cancelListing(uint8 deck, uint8 generation) external onlyLister {
         CardListing memory listing = _listings[deck][generation];
@@ -178,7 +180,7 @@ contract Entropy is ERC721, AccessControl, ReentrancyGuard {
 
     /**
      * @notice - Purchase a card that has an active listing. The purchaser of the previous card in the
-     * deck (if any) will be able to purchase before startTime. Purchasing a card
+     * deck (if any) will be able to purchase before public sale begins. Purchasing a card
      * flags the current listing as ended by setting tokenId, mints the token to the purchaser, and lists
      * the next card in the deck.     
      */
@@ -189,7 +191,7 @@ contract Entropy is ERC721, AccessControl, ReentrancyGuard {
         if (listing.startTime == 0) revert CardNotListed();
         if (listing.tokenId != 0) revert CardSaleHasEnded();
         if (block.timestamp < listing.startTime) {
-            if (msg.sender != listing.prevPurchaser) revert Unauthorized();
+            if (_msgSender() != listing.prevPurchaser) revert Unauthorized();
             isChainPurchase = true;
         }
         
@@ -199,35 +201,31 @@ contract Entropy is ERC721, AccessControl, ReentrancyGuard {
         if (msg.value < price) revert InsufficientFunds();
         uint256 refund = msg.value - price;
         if (refund > 0) {
-            (bool sent, ) = payable(msg.sender).call{value: refund}("");
+            (bool sent, ) = payable(_msgSender()).call{value: refund}("");
             if (!sent) revert EthTransferFailed();
         }
 
         uint16 tokenId = _nextTokenId++;
         _listings[deck][generation].tokenId = tokenId;
         _listingIds[tokenId] = ListingId(deck, generation);
-        _safeMint(msg.sender, tokenId);
+        _safeMint(_msgSender(), tokenId);
 
         uint8 nextGen = generation + 1;
         uint32 startTime;
         if (_isValidGeneration(nextGen)) {
             startTime = uint32(block.timestamp) + _chainPurchaseWindow;        
-            _listCard(deck, nextGen, startTime, msg.sender);
+            _listCard(deck, nextGen, startTime, _msgSender());
         }
     
-        emit CardPurchased(deck, generation, tokenId, msg.sender, price, startTime);
+        emit CardPurchased(deck, generation, tokenId, _msgSender(), price, startTime);
     }
 
     /**
-     * @dev Rarity is a 2D array indexed by deck, generation translated into one dimension using
+     * @dev - Rarity is a 2D array indexed by deck, generation translated into one dimension using
      * a striding technique that lays each deck out one after another. For example, _rarity[0] would
      * represent deck 1, generation 1, _rarity[1] = deck 1, gen 2 and so on.
      */
-    function getRarity(uint16 deck, uint16 generation)
-        public
-        view
-        returns (uint8)
-    {
+    function getRarity(uint16 deck, uint16 generation) public view returns (uint8) {
         if (deck == 0 || deck > MAX_DECKS) revert InvalidDeck();
         if (generation == 0 || generation > MAX_GENERATIONS) revert InvalidGeneration();
         uint16 index = ((deck - 1) * MAX_GENERATIONS) + (generation - 1);
@@ -237,11 +235,7 @@ contract Entropy is ERC721, AccessControl, ReentrancyGuard {
     /**
      * @dev - Fetch tokenId for given deck & generation.
      */
-    function getTokenId(uint8 deck, uint8 generation)
-        external
-        view
-        returns (uint16)
-    {
+    function getTokenId(uint8 deck, uint8 generation) external view returns (uint16) {
         CardListing memory listing = _listings[deck][generation];        
         require(
             listing.tokenId != 0 &&  _exists(listing.tokenId),
@@ -253,11 +247,7 @@ contract Entropy is ERC721, AccessControl, ReentrancyGuard {
     /**
      * @dev - Look up ListingId (deck and generation) given a tokenId 
      */
-    function getListingId(uint16 tokenId)
-        external
-        view
-        returns (ListingId memory listingId)
-    {
+    function getListingId(uint16 tokenId) external view returns (ListingId memory) {
         return _listingIds[tokenId];
     }
     
@@ -283,12 +273,7 @@ contract Entropy is ERC721, AccessControl, ReentrancyGuard {
      * logic. For example, when listing an entire generation, this allows us to silently 
      * skip over generations that may already have been listed for a given deck.
      */
-    function _listCard(
-        uint8 deck,
-        uint8 generation,
-        uint32 startTime,
-        address prevPurchaser
-    ) internal {        
+    function _listCard(uint8 deck, uint8 generation, uint32 startTime, address prevPurchaser) internal {        
         if (!_isValidCard(deck, generation)) revert InvalidCard(deck, generation);
         if (startTime == 0) revert InvalidStartTime();
         CardListing memory listing = _listings[deck][generation];
@@ -340,17 +325,11 @@ contract Entropy is ERC721, AccessControl, ReentrancyGuard {
         _listingDuration = listingDuration;
     }
 
-    function setChainPurchaseWindow(uint16 chainPurchaseWindow)
-        external
-        onlyOwner
-    {
+    function setChainPurchaseWindow(uint16 chainPurchaseWindow) external onlyOwner {
         _chainPurchaseWindow = chainPurchaseWindow;
     }
 
-    function setChainPurchaseDiscount(uint8 chainPurchaseDiscount)
-        external
-        onlyOwner
-    {
+    function setChainPurchaseDiscount(uint8 chainPurchaseDiscount) external onlyOwner {
         _chainPurchaseDiscount = chainPurchaseDiscount;
     }
 

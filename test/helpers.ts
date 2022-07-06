@@ -91,7 +91,7 @@ describe("Internal Helpers", function () {
     await ethers.provider.send("evm_setNextBlockTimestamp", [startTime + 7200]);
     await ethers.provider.send("evm_mine", []);
 
-    let price = await entropy.getPrice(1, 1, startTime);
+    let price = await entropy.getPrice(1, 1);
     expect(ethers.utils.formatEther(price)).to.be.eq(
       ethers.utils.formatEther(expectedPrice)
     );
@@ -105,7 +105,7 @@ describe("Internal Helpers", function () {
     ]);
     await ethers.provider.send("evm_mine", []);
 
-    price = await entropy.getPrice(1, 1, startTime);
+    price = await entropy.getPrice(1, 1);
     expect(ethers.utils.formatEther(price)).to.be.eq(
       ethers.utils.formatEther(expectedPrice)
     );
@@ -118,7 +118,7 @@ describe("Internal Helpers", function () {
     ]);
     await ethers.provider.send("evm_mine", []);
 
-    price = await entropy.getPrice(1, 1, startTime);
+    price = await entropy.getPrice(1, 1);
     expect(ethers.utils.formatEther(price)).to.be.eq(
       ethers.utils.formatEther(expectedPrice)
     );
@@ -132,7 +132,7 @@ describe("Internal Helpers", function () {
     ]);
     await ethers.provider.send("evm_mine", []);
 
-    const price = await entropy.getPrice(1, 1, startTime);
+    const price = await entropy.getPrice(1, 1);
     changeBalance = price;
     await expect(
       await entropy.connect(buyer1).purchaseCard(1, 1, { value: initialPrice })

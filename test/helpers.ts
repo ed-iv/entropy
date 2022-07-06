@@ -1,6 +1,6 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
-import { ExposedInternals } from "../typechain";
+import { Entropy } from "../typechain";
 import "hardhat-gas-reporter";
 import fs from "fs";
 import { BigNumber, Signer } from "ethers";
@@ -8,9 +8,6 @@ import { start } from "repl";
 
 const BASE_PRICE = ethers.utils.parseEther("1");
 const BASE_CONSTANT = ethers.utils.parseEther("0.5");
-
-// const BASE_PRICE = ethers.utils.parseEther("0.01");
-// const BASE_CONSTANT = ethers.utils.parseEther("0.005");
 
 interface Card {
   deck: number;
@@ -24,7 +21,7 @@ let changeBalance: BigNumber;
 const getNow = () => Math.ceil(Date.now() / 1000);
 
 describe("Internal Helpers", function () {
-  let entropy: ExposedInternals;
+  let entropy: Entropy;
   const rarityKey: number[][] = [[]];
   let cards: Card[];
   let rarity: number[];
@@ -40,30 +37,30 @@ describe("Internal Helpers", function () {
       rarityKey[c.deck][c.generation] = c.rarity;
     });
     rarity = cards.map((c) => c.rarity);
-    const ExposedInternals = await ethers.getContractFactory(
-      "ExposedInternals"
+    const Entropy = await ethers.getContractFactory(
+      "Entropy"
     );
-    entropy = await ExposedInternals.deploy();
+    entropy = await Entropy.deploy();
     await entropy.setRarity(rarity);
   });
 
   it("Allows rarity to be set and indexed by deck, generation", async () => {
-    expect(await entropy._getRarity(1, 1)).to.be.eq(rarityKey[1][1]);
-    expect(await entropy._getRarity(50, 60)).to.be.eq(rarityKey[50][60]);
-    expect(await entropy._getRarity(23, 14)).to.be.eq(rarityKey[23][14]);
-    expect(await entropy._getRarity(12, 55)).to.be.eq(rarityKey[12][55]);
-    expect(await entropy._getRarity(37, 18)).to.be.eq(rarityKey[37][18]);
+    expect(await entropy.getRarity(1, 1)).to.be.eq(rarityKey[1][1]);
+    expect(await entropy.getRarity(50, 60)).to.be.eq(rarityKey[50][60]);
+    expect(await entropy.getRarity(23, 14)).to.be.eq(rarityKey[23][14]);
+    expect(await entropy.getRarity(12, 55)).to.be.eq(rarityKey[12][55]);
+    expect(await entropy.getRarity(37, 18)).to.be.eq(rarityKey[37][18]);
   });
 
   it("Reverts when checking rarity with invalid deck and/or generation", async () => {
-    await expect(entropy._getRarity(0, 1)).to.be.revertedWith("InvalidDeck");
-    await expect(entropy._getRarity(51, 1)).to.be.revertedWith("InvalidDeck");
-    await expect(entropy._getRarity(51, 0)).to.be.revertedWith("InvalidDeck");
-    await expect(entropy._getRarity(51, 61)).to.be.revertedWith("InvalidDeck");
-    await expect(entropy._getRarity(1, 0)).to.be.revertedWith(
+    await expect(entropy.getRarity(0, 1)).to.be.revertedWith("InvalidDeck");
+    await expect(entropy.getRarity(51, 1)).to.be.revertedWith("InvalidDeck");
+    await expect(entropy.getRarity(51, 0)).to.be.revertedWith("InvalidDeck");
+    await expect(entropy.getRarity(51, 61)).to.be.revertedWith("InvalidDeck");
+    await expect(entropy.getRarity(1, 0)).to.be.revertedWith(
       "InvalidGeneration"
     );
-    await expect(entropy._getRarity(1, 61)).to.be.revertedWith(
+    await expect(entropy.getRarity(1, 61)).to.be.revertedWith(
       "InvalidGeneration"
     );
   });

@@ -1,4 +1,3 @@
-// contracts/Entropy.sol
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.4;
 
@@ -6,7 +5,6 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
-import "hardhat/console.sol";
 
 error CardNotListed();
 error CardSaleHasEnded();
@@ -20,9 +18,6 @@ error InvalidCard(uint8 deck, uint8 generation);
 error Unauthorized();
 error NoEtherBalance();
 error InvalidStartTime();
-
-// uint256 public _priceCoeff = 0.01 ether;
-// uint256 public _priceConstant = 0.005 ether;    
 
 struct CardListing {
     uint16 tokenId;
@@ -39,19 +34,19 @@ contract Entropy is ERC721, AccessControl, ReentrancyGuard {
     using Strings for uint256;    
     using Strings for uint8;    
 
-    uint8 public constant MAX_DECKS = 50;
-    uint8 public constant MAX_GENERATIONS = 60;
+    uint8 private constant MAX_DECKS = 50;
+    uint8 private constant MAX_GENERATIONS = 60;
 
-    uint256 public _priceCoeff = 1 ether;
-    uint256 public _priceConstant = 0.5 ether;
-    uint24 public _listingDuration = 86400; // 24 Hours
-    uint16 public _chainPurchaseWindow = 3600; // 1 Hour
-    uint8 public _chainPurchaseDiscount = 25; // percent
+    uint256 private _priceCoeff = 1 ether;
+    uint256 private _priceConstant = 0.5 ether;
+    uint24 private _listingDuration = 86400; // 24 Hours
+    uint16 private _chainPurchaseWindow = 3600; // 1 Hour
+    uint8 private _chainPurchaseDiscount = 25; // percent
     uint16 private _nextTokenId = 1;
-    string public _baseTokenURI = "ipfs://foo";
+    string private _baseTokenURI = "https://entropycards.fun/meta";
+    uint8[] private _rarity;
     mapping(uint8 => mapping(uint8 => CardListing)) public _listings;
-    mapping(uint16 => ListingId) public _listingIds;
-    uint8[] public _rarity;
+    mapping(uint16 => ListingId) public _listingIds;    
     bytes32 public constant LISTER = keccak256("LISTER");
 
     event CardListed(
@@ -199,8 +194,8 @@ contract Entropy is ERC721, AccessControl, ReentrancyGuard {
         }
         
         uint256 price = isChainPurchase
-            ? getChainPrice(deck, generation)
-            : getPrice(deck, generation, listing.startTime);
+            ? _getChainPrice(deck, generation)
+            : _getPrice(deck, generation, listing.startTime);
         if (msg.value < price) revert InsufficientFunds();
         uint256 refund = msg.value - price;
         if (refund > 0) {
@@ -229,7 +224,7 @@ contract Entropy is ERC721, AccessControl, ReentrancyGuard {
      * represent deck 1, generation 1, _rarity[1] = deck 1, gen 2 and so on.
      */
     function getRarity(uint16 deck, uint16 generation)
-        internal
+        public
         view
         returns (uint8)
     {
@@ -247,13 +242,9 @@ contract Entropy is ERC721, AccessControl, ReentrancyGuard {
         view
         returns (uint16)
     {
-        CardListing memory listing = _listings[deck][generation];
+        CardListing memory listing = _listings[deck][generation];        
         require(
-            listing.tokenId != 0,
-            "ERC721Metadata: URI query for nonexistent token"
-        );
-        require(
-            _exists(listing.tokenId),
+            listing.tokenId != 0 &&  _exists(listing.tokenId),
             "ERC721Metadata: URI query for nonexistent token"
         );
         return listing.tokenId;
@@ -313,11 +304,12 @@ contract Entropy is ERC721, AccessControl, ReentrancyGuard {
     /**  
      * @notice - Rarity dependent price for normal purchases.
      */ 
-    function getPrice(
-        uint8 deck,
-        uint8 generation,
-        uint32 startTime
-    ) public view returns (uint256) {
+    function getPrice(uint8 deck, uint8 generation) public view returns (uint256) {
+        CardListing memory listing = _listings[deck][generation];
+        return _getPrice(deck, generation, listing.startTime);
+    }
+
+    function _getPrice(uint8 deck, uint8 generation, uint32 startTime) internal view returns (uint256) {
         uint256 rarity = getRarity(deck, generation);
         uint256 startPrice = (((rarity - 1) * (_priceCoeff)) / 9) + _priceConstant;
         uint256 timeElapsed = block.timestamp - uint256(startTime);
@@ -333,11 +325,11 @@ contract Entropy is ERC721, AccessControl, ReentrancyGuard {
     /** 
      * @notice - Rarity dependent price for chain purchases.
      */
-    function getChainPrice(uint8 deck, uint8 generation)
-        public
-        view
-        returns (uint256)
-    {
+    function getChainPrice(uint8 deck, uint8 generation) public view returns (uint256) {
+        return _getChainPrice(deck, generation);
+    }
+
+    function _getChainPrice(uint8 deck, uint8 generation) internal view returns (uint256) {
         uint256 rarity = getRarity(deck, generation);
         uint256 startPrice = (((rarity - 1) * (_priceCoeff)) / 9) + _priceConstant;
         uint256 discount = (startPrice * _chainPurchaseDiscount) / 100;

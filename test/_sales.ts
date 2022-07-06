@@ -5,6 +5,8 @@ import "hardhat-gas-reporter";
 import { BigNumber, Contract, Signer, utils } from "ethers";
 import fs from "fs";
 
+const baseTokenURI = "https://entropycards.fun/meta";
+
 interface Card {
   deck: number;
   generation: number;
@@ -70,7 +72,7 @@ describe("Entropy Card Listing & Sales", function () {
     ).not.to.be.reverted;
     await expect(await entropy.balanceOf(await buyer1.getAddress())).to.eq(1);
     expect(await entropy.ownerOf(1)).to.be.eq(await buyer1.getAddress());
-    expect(await entropy.tokenURI(1)).to.be.eq("ipfs://foo/D1-G1.json");
+    expect(await entropy.tokenURI(1)).to.be.eq(`${baseTokenURI}/D1-G1.json`);
   });
 
   it("Reverts when random user attempts chain purchase", async () => {
@@ -113,7 +115,7 @@ describe("Entropy Card Listing & Sales", function () {
     
     await expect(await entropy.balanceOf(await buyer1.getAddress())).to.eq(2);
     expect(await entropy.ownerOf(2)).to.be.eq(await buyer1.getAddress());
-    expect(await entropy.tokenURI(2)).to.be.eq("ipfs://foo/D1-G2.json");
+    expect(await entropy.tokenURI(2)).to.be.eq(`${baseTokenURI}/D1-G2.json`);
   });
 
   it("Reverts when user tries to purchase card that has sold", async () => {
@@ -144,7 +146,7 @@ describe("Entropy Card Listing & Sales", function () {
       .to.emit(entropy, "CardPurchased");
     await expect(await entropy.balanceOf(await buyer2.getAddress())).to.eq(1);
     expect(await entropy.ownerOf(3)).to.be.eq(await buyer2.getAddress());
-    expect(await entropy.tokenURI(3)).to.be.eq("ipfs://foo/D3-G5.json");
+    expect(await entropy.tokenURI(3)).to.be.eq(`${baseTokenURI}/D3-G5.json`);
   });
 
   it("Allows purchase of all valid cards in a given deck", async () => {

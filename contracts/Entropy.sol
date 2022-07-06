@@ -6,6 +6,23 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 
+/// @title - ENTROPY Cards
+/// @author - ediv === CHAIN/SAW
+
+/**
+ *       ___           ___           ___           ___           ___           ___           ___     
+ *      /\  \         /\__\         /\  \         /\  \         /\  \         /\  \         |\__\    
+ *     /::\  \       /::|  |        \:\  \       /::\  \       /::\  \       /::\  \        |:|  |   
+ *    /:/\:\  \     /:|:|  |         \:\  \     /:/\:\  \     /:/\:\  \     /:/\:\  \       |:|  |   
+ *   /::\~\:\  \   /:/|:|  |__       /::\  \   /::\~\:\  \   /:/  \:\  \   /::\~\:\  \      |:|__|__ 
+ *  /:/\:\ \:\__\ /:/ |:| /\__\     /:/\:\__\ /:/\:\ \:\__\ /:/__/ \:\__\ /:/\:\ \:\__\     /::::\__\
+ *  \:\~\:\ \/__/ \/__|:|/:/  /    /:/  \/__/ \/_|::\/:/  / \:\  \ /:/  / \/__\:\/:/  /    /:/~~/~   
+ *   \:\ \:\__\       |:/:/  /    /:/  /         |:|::/  /   \:\  /:/  /       \::/  /    /:/  /     
+ *    \:\ \/__/       |::/  /     \/__/          |:|\/__/     \:\/:/  /         \/__/     \/__/      
+ *     \:\__\         /:/  /                     |:|  |        \::/  /                               
+ *      \/__/         \/__/                       \|__|         \/__/                                
+ */
+
 error CardNotListed();
 error CardSaleHasEnded();
 error ListingAlreadyExists();
@@ -31,7 +48,6 @@ struct ListingId {
 }
 
 contract Entropy is ERC721, AccessControl, ReentrancyGuard {
-    using Strings for uint256;    
     using Strings for uint8;    
 
     uint8 private constant MAX_DECKS = 50;
@@ -41,12 +57,12 @@ contract Entropy is ERC721, AccessControl, ReentrancyGuard {
     uint256 private _priceConstant = 0.5 ether;
     uint24 private _listingDuration = 86400; // 24 Hours
     uint16 private _chainPurchaseWindow = 3600; // 1 Hour
-    uint8 private _chainPurchaseDiscount = 25; // percent
     uint16 private _nextTokenId = 1;
-    string private _baseTokenURI = "https://entropycards.fun/meta";
+    uint8 private _chainPurchaseDiscount = 25; // percent    
+    string private _baseTokenURI;
     uint8[] private _rarity;
-    mapping(uint8 => mapping(uint8 => CardListing)) public _listings;
-    mapping(uint16 => ListingId) public _listingIds;    
+    mapping(uint8 => mapping(uint8 => CardListing)) public listings;
+    mapping(uint16 => ListingId) public listingIds;    
     bytes32 public constant LISTER = keccak256("LISTER");
 
     event CardListed(
@@ -67,8 +83,9 @@ contract Entropy is ERC721, AccessControl, ReentrancyGuard {
 
     event ListingCanceled(uint8 deck, uint8 generation);
 
-    constructor() ERC721("Entropy Cards", "ENTROPY") {
+    constructor(string memory baseTokenURI) ERC721("Entropy Cards", "ENTROPY") {
         _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
+        _baseTokenURI = baseTokenURI;
     }
 
     modifier onlyOwner() {
@@ -92,7 +109,7 @@ contract Entropy is ERC721, AccessControl, ReentrancyGuard {
     }
 
     function tokenURI(uint256 tokenId) public view override returns (string memory) {
-        ListingId memory listingId = _listingIds[uint16(tokenId)];
+        ListingId memory listingId = listingIds[uint16(tokenId)];
         require(
             _exists(tokenId) && _isValidCard(listingId.deck, listingId.generation),
             "ERC721Metadata: URI query for nonexistent token"
@@ -134,7 +151,7 @@ contract Entropy is ERC721, AccessControl, ReentrancyGuard {
      * @notice - List a specific card for sale by deck and generation.
      */
     function listCard(uint8 deck, uint8 generation, uint32 startTime) external onlyLister {
-        if (_listings[deck][generation].startTime != 0) revert ListingAlreadyExists();
+        if (listings[deck][generation].startTime != 0) revert ListingAlreadyExists();
         _listCard(deck, generation, startTime, address(0));
     }
 
@@ -171,10 +188,10 @@ contract Entropy is ERC721, AccessControl, ReentrancyGuard {
      * startTime and a tokenId of 0.
      */
     function cancelListing(uint8 deck, uint8 generation) external onlyLister {
-        CardListing memory listing = _listings[deck][generation];
+        CardListing memory listing = listings[deck][generation];
         if (listing.startTime == 0) revert ListingDoesNotExist();
         if (listing.tokenId != 0) revert CardSaleHasEnded();
-        delete _listings[deck][generation];
+        delete listings[deck][generation];
         emit ListingCanceled(deck, generation);
     }
 
@@ -186,7 +203,7 @@ contract Entropy is ERC721, AccessControl, ReentrancyGuard {
      */
     function purchaseCard(uint8 deck, uint8 generation) external payable nonReentrant {
         if (!_isValidCard(deck, generation)) revert InvalidCard(deck, generation);
-        CardListing memory listing = _listings[deck][generation];
+        CardListing memory listing = listings[deck][generation];
         bool isChainPurchase = false;
         if (listing.startTime == 0) revert CardNotListed();
         if (listing.tokenId != 0) revert CardSaleHasEnded();
@@ -206,8 +223,8 @@ contract Entropy is ERC721, AccessControl, ReentrancyGuard {
         }
 
         uint16 tokenId = _nextTokenId++;
-        _listings[deck][generation].tokenId = tokenId;
-        _listingIds[tokenId] = ListingId(deck, generation);
+        listings[deck][generation].tokenId = tokenId;
+        listingIds[tokenId] = ListingId(deck, generation);
         _safeMint(_msgSender(), tokenId);
 
         uint8 nextGen = generation + 1;
@@ -236,7 +253,7 @@ contract Entropy is ERC721, AccessControl, ReentrancyGuard {
      * @dev - Fetch tokenId for given deck & generation.
      */
     function getTokenId(uint8 deck, uint8 generation) external view returns (uint16) {
-        CardListing memory listing = _listings[deck][generation];        
+        CardListing memory listing = listings[deck][generation];        
         require(
             listing.tokenId != 0 &&  _exists(listing.tokenId),
             "ERC721Metadata: URI query for nonexistent token"
@@ -248,7 +265,7 @@ contract Entropy is ERC721, AccessControl, ReentrancyGuard {
      * @dev - Look up ListingId (deck and generation) given a tokenId 
      */
     function getListingId(uint16 tokenId) external view returns (ListingId memory) {
-        return _listingIds[tokenId];
+        return listingIds[tokenId];
     }
     
     function withdraw(address to) public onlyOwner {
@@ -276,12 +293,12 @@ contract Entropy is ERC721, AccessControl, ReentrancyGuard {
     function _listCard(uint8 deck, uint8 generation, uint32 startTime, address prevPurchaser) internal {        
         if (!_isValidCard(deck, generation)) revert InvalidCard(deck, generation);
         if (startTime == 0) revert InvalidStartTime();
-        CardListing memory listing = _listings[deck][generation];
+        CardListing memory listing = listings[deck][generation];
         if (listing.startTime == 0) {
             // Card has not been listed yet:
             listing.startTime = startTime;
             listing.prevPurchaser = prevPurchaser;
-            _listings[deck][generation] = listing;
+            listings[deck][generation] = listing;
             emit CardListed(deck, generation, prevPurchaser, startTime);
         }
     }
@@ -290,7 +307,7 @@ contract Entropy is ERC721, AccessControl, ReentrancyGuard {
      * @notice - Rarity dependent price for normal purchases.
      */ 
     function getPrice(uint8 deck, uint8 generation) public view returns (uint256) {
-        CardListing memory listing = _listings[deck][generation];
+        CardListing memory listing = listings[deck][generation];
         return _getPrice(deck, generation, listing.startTime);
     }
 

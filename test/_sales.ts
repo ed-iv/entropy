@@ -24,7 +24,7 @@ const startPrice = BigNumber.from(10).pow(18).mul(2); // 2 ETH
 const ONE_HOUR = 60 * 60;
 const ONE_DAY = 24 * 60 * 60;
 
-describe("Entropy Card Listing & Sales", function () {
+describe("Entropy Cards Listing & Sales", function () {
   before(async () => {
     const rarityKey: number[][] = [[]];
     const rawData = fs.readFileSync("test/data/rarity.json");
@@ -39,23 +39,23 @@ describe("Entropy Card Listing & Sales", function () {
 
     [owner, buyer1, buyer2, buyer3] = await ethers.getSigners();
     const Entropy = await ethers.getContractFactory("Entropy");
-    entropy = await Entropy.deploy();
+    entropy = await Entropy.deploy(baseTokenURI);
     await entropy.setRarity(rarity);
     return entropy as Entropy;
   });
 
   it("Allows owner to start auctions for an entire generation", async () => {
     const startTime = getNow() - ONE_HOUR;
-    let cardSale = await entropy._listings(1, 1);
+    let cardSale = await entropy.listings(1, 1);
     expect(cardSale.startTime).to.be.eq(0);
     await expect(entropy.listGeneration(1, startTime)).not.to.be.reverted;
-    cardSale = await entropy._listings(1, 1);
+    cardSale = await entropy.listings(1, 1);
     expect(cardSale.startTime).to.be.eq(startTime);
 
-    const cardSale2 = await entropy._listings(1, 2);
+    const cardSale2 = await entropy.listings(1, 2);
     expect(cardSale2.startTime).to.be.eq(0);
 
-    const cardSale3 = await entropy._listings(50, 1);
+    const cardSale3 = await entropy.listings(50, 1);
     expect(cardSale3.startTime).to.be.eq(startTime);
   });
 
@@ -93,17 +93,7 @@ describe("Entropy Card Listing & Sales", function () {
     await entropy.connect(buyer1).purchaseCard(1, 2, { value: startPrice });
     
     const block = await ethers.provider.getBlockNumber();        
-    const events = await entropy.queryFilter(
-      entropy.filters.CardPurchased(
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,                              
-      ),
-      block
-    );
+    const events = await entropy.queryFilter(entropy.filters.CardPurchased(), block);
     expect(events.length).eq(1);
     const logDescription = entropy.interface.parseLog(events[0]);
     expect(logDescription.args.deck).to.eq(1);
@@ -126,12 +116,12 @@ describe("Entropy Card Listing & Sales", function () {
 
   it("Allows owner to start auctions for specific deck & generation.", async () => {
     const startTime = getNow() - ONE_HOUR;
-    let cardSale = await entropy._listings(3, 5);
+    let cardSale = await entropy.listings(3, 5);
     expect(cardSale.startTime).to.be.eq(0);
     await expect(entropy.listCard(3, 5, startTime))
       .to.emit(entropy, "CardListed")
       .withArgs(3, 5, ethers.constants.AddressZero, startTime);
-    cardSale = await entropy._listings(3, 5);
+    cardSale = await entropy.listings(3, 5);
     expect(cardSale.startTime).to.be.eq(startTime);
   });
 
@@ -169,12 +159,12 @@ describe("Entropy Card Listing & Sales", function () {
   it("Allows owner to cancel listing prior to sale", async () => {
     const startTime = getNow() - ONE_HOUR;    
     await entropy.listCard(10, 2, startTime);
-    let cardSale = await entropy._listings(10, 2);    
+    let cardSale = await entropy.listings(10, 2);    
     expect(cardSale.startTime).to.be.eq(startTime);
     await expect(entropy.cancelListing(10, 2))
       .to.emit(entropy, "ListingCanceled")
       .withArgs(10, 2);
-    cardSale = await entropy._listings(10, 2);
+    cardSale = await entropy.listings(10, 2);
     expect(cardSale.startTime).to.be.eq(0);
     await expect(
       entropy.connect(buyer1).purchaseCard(10, 2, { value: startPrice })

@@ -7,7 +7,7 @@ import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 
 /// @title - ENTROPY Cards
-/// @author - ediv === CHAIN/SAW
+/// @author - CHAIN/SAW
 
 /**
  *       ___           ___           ___           ___           ___           ___           ___     

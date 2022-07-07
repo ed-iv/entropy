@@ -37,24 +37,21 @@ const config: HardhatUserConfig = {
       accounts:
         process.env.PRIVATE_KEY !== undefined ? [process.env.PRIVATE_KEY] : [],
     },
+    mainnet: {
+      url: process.env.MAINNET_URL || "",
+      accounts:
+        process.env.PRIVATE_KEY !== undefined ? [process.env.PRIVATE_KEY] : [],
+    },
   },
   gasReporter: {
     enabled: process.env.REPORT_GAS !== undefined,
     currency: "USD",
     coinmarketcap: process.env.COIN_MARKET_CAP_KEY || "",
-    gasPrice: 50
+    // gasPrice: 50
   },
   etherscan: {
     apiKey: process.env.ETHERSCAN_API_KEY,
-  },
-  abiExporter: {
-    path: './data/abi',
-    runOnCompile: true,
-    clear: true,
-    flat: true,    
-    spacing: 2,
-    pretty: true,
-  }
+  },  
 };
 
 export default config;

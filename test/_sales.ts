@@ -151,6 +151,7 @@ describe("Entropy Cards Listing & Sales", function () {
         // Generations 1 - 60;
         await expect(entropy.connect(buyer3).purchaseCard(50, i, { value: startPrice }))
           .not.to.be.reverted;
+        expect(await entropy.tokenURI(i + 3)).to.be.eq(`${baseTokenURI}/D${50}-G${i}.json`);
       }      
     }
     await expect(await entropy.balanceOf(await buyer3.getAddress())).to.eq(60);
